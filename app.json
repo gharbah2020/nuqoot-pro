@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "دفتر النقوط",
+    "slug": "nuqoot-pro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "com.shark.nuqootpro",
+      "adaptiveIcon": {
+        "backgroundColor": "#1B5E20"
+      }
+    },
+    "plugins": [
+      "expo-sqlite"
+    ]
+  }
+}
