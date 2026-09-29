@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { I18nManager, ActivityIndicator, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthService } from './src/services/AuthService';
 import AuthScreen from './src/screens/AuthScreen';
@@ -29,7 +30,7 @@ function MainTabs() {
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: '#888',
-        tabBarStyle: { height: 60, paddingBottom: 8, paddingTop: 6 },
+        tabBarStyle: { height: 65, paddingBottom: 10, paddingTop: 6, elevation: 10, borderTopWidth: 0 },
         tabBarIcon: ({ color, size, focused }) => {
           let icon = 'home';
           if (route.name === 'HomeTab') icon = focused ? 'home' : 'home-outline';
@@ -40,8 +41,8 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="HomeTab" component={HomeScreen} options={{ tabBarLabel: 'الرئيسية' }} />
-      <Tab.Screen name="SearchTab" component={SearchScreen} options={{ tabBarLabel: 'بحث' }} />
-      <Tab.Screen name="ReportsTab" component={ReportsScreen} options={{ tabBarLabel: 'تقارير' }} />
+      <Tab.Screen name="SearchTab" component={SearchScreen} options={{ tabBarLabel: 'البحث الشامل' }} />
+      <Tab.Screen name="ReportsTab" component={ReportsScreen} options={{ tabBarLabel: 'التقارير' }} />
     </Tab.Navigator>
   );
 }
@@ -67,22 +68,24 @@ export default function App() {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {user ? (
-          <>
-            <Stack.Screen name="Main" component={MainTabs} />
-            <Stack.Screen name="AddEvent" component={AddEventScreen} />
-            <Stack.Screen name="EventDetail" component={EventDetailScreen} />
-            <Stack.Screen name="AddNuqoot" component={AddNuqootScreen} />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-          </>
-        ) : (
-          <Stack.Screen name="Auth">
-            {(props) => <AuthScreen {...props} onAuth={(u) => setUser(u)} />}
-          </Stack.Screen>
-        )}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+          {user ? (
+            <>
+              <Stack.Screen name="Main" component={MainTabs} />
+              <Stack.Screen name="AddEvent" component={AddEventScreen} />
+              <Stack.Screen name="EventDetail" component={EventDetailScreen} />
+              <Stack.Screen name="AddNuqoot" component={AddNuqootScreen} />
+              <Stack.Screen name="Settings" component={SettingsScreen} />
+            </>
+          ) : (
+            <Stack.Screen name="Auth">
+              {(props) => <AuthScreen {...props} onAuth={(u) => setUser(u)} />}
+            </Stack.Screen>
+          )}
+        </Stack.Navigator>
+      </NavigationContainer>
+    </SafeAreaProvider>
   );
 }

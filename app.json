@@ -5,9 +5,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "android": {
       "package": "com.shark.nuqootpro",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#1B5E20"
       },
       "permissions": [
@@ -15,10 +17,8 @@
         "WRITE_EXTERNAL_STORAGE"
       ]
     },
-    "extra": {
-      "eas": {
-        "projectId": "0fa73edb-e4ea-4376-b4da-b09d5a11e405"
-      }
-    }
+    "plugins": [
+      "expo-sqlite"
+    ]
   }
 }
