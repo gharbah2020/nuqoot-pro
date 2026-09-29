@@ -38,7 +38,7 @@ const SearchScreen = () => {
           style={styles.input}
           value={query}
           onChangeText={handleSearch}
-          placeholder="اكتب اسم الشخص للبحث..."
+          placeholder="ابحث بالاسم أو رقم الهاتف..." // تم التحديث هنا
           textAlign="right"
           autoFocus
         />
@@ -53,7 +53,10 @@ const SearchScreen = () => {
 
           <View style={styles.personHeader}>
             <Text style={styles.personName}>{selected.person_name}</Text>
+            {/* عرض البلد/العنوان لو موجود */}
+            {selected.address ? <Text style={styles.personPhone}>📍 {selected.address}</Text> : null}
             {selected.phone ? <Text style={styles.personPhone}>📱 {selected.phone}</Text> : null}
+            
             <View style={styles.statsRow}>
               <View style={[styles.stat, { backgroundColor: COLORS.incomingLight }]}>
                 <Text style={styles.statL}>إجمالي الوارد (منه)</Text>
@@ -109,7 +112,7 @@ const SearchScreen = () => {
             query.length > 0 ? (
               <Text style={styles.empty}>لا توجد نتائج مطابقة لـ "{query}"</Text>
             ) : (
-              <Text style={styles.empty}>ابحث باسم أي شخص لمعرفة إجمالي ما لك وما عليك معه</Text>
+              <Text style={styles.empty}>ابحث باسم الشخص أو رقم هاتفه</Text>
             )
           }
         />

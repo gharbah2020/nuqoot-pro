@@ -13,6 +13,7 @@ const AddNuqootScreen = ({ route, navigation }) => {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState(''); // حقل العنوان الجديد
   const [relation, setRelation] = useState('');
   const [notes, setNotes] = useState('');
   const [showRel, setShowRel] = useState(false);
@@ -28,6 +29,7 @@ const AddNuqootScreen = ({ route, navigation }) => {
       person_name: name.trim(),
       amount: parseFloat(amount),
       phone: phone.trim(),
+      address: address.trim(), // إرسال العنوان لقاعدة البيانات
       relation,
       notes: notes.trim()
     });
@@ -37,6 +39,7 @@ const AddNuqootScreen = ({ route, navigation }) => {
       setName('');
       setAmount('');
       setPhone('');
+      setAddress('');
       setRelation('');
       setNotes('');
     } else {
@@ -58,7 +61,7 @@ const AddNuqootScreen = ({ route, navigation }) => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.form}>
+      <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
         <Text style={styles.label}>اسم الشخص *</Text>
         <TextInput 
           style={styles.input} 
@@ -110,6 +113,16 @@ const AddNuqootScreen = ({ route, navigation }) => {
             ))}
           </View>
         )}
+
+        {/* حقل البلد / العنوان الجديد */}
+        <Text style={styles.label}>البلد / العنوان (اختياري)</Text>
+        <TextInput 
+          style={styles.input} 
+          value={address} 
+          onChangeText={setAddress} 
+          placeholder="مثال: القاهرة / قرية كذا" 
+          textAlign="right" 
+        />
 
         <Text style={styles.label}>رقم الهاتف (اختياري)</Text>
         <TextInput 

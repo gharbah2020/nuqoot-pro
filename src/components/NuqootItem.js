@@ -25,7 +25,8 @@ const NuqootItem = ({ item, direction, onDelete }) => {
 
       <View style={styles.info}>
         <Text style={styles.name}>{item.person_name}</Text>
-        <Text style={styles.sub}>{[item.relation, item.phone].filter(Boolean).join(' • ')}</Text>
+        {/* السطر ده تم تحديثه لإظهار البلد/العنوان جنب القرابة والهاتف */}
+        <Text style={styles.sub}>{[item.relation, item.address, item.phone].filter(Boolean).join(' • ')}</Text>
         {item.notes ? <Text style={styles.notes}>📝 {item.notes}</Text> : null}
       </View>
 

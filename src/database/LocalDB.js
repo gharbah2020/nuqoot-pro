@@ -5,6 +5,7 @@ let db = null;
 export const getDB = async () => {
   if (db) return db;
   db = await SQLite.openDatabaseAsync('nuqoot_pro.db');
+  
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -28,6 +29,7 @@ export const getDB = async () => {
       amount REAL NOT NULL,
       phone TEXT DEFAULT '',
       relation TEXT DEFAULT '',
+      address TEXT DEFAULT '', 
       notes TEXT DEFAULT '',
       is_deleted INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now','localtime')),
@@ -38,6 +40,10 @@ export const getDB = async () => {
     CREATE INDEX IF NOT EXISTS idx_nuqoot_event ON nuqoot(event_id);
     CREATE INDEX IF NOT EXISTS idx_nuqoot_person ON nuqoot(person_name);
   `);
+
+  // تحديث ذكي: إضافة حقل العنوان لقاعدة البيانات القديمة لو مكنش موجود بدون مسح البيانات
+  try { await db.execAsync("ALTER TABLE nuqoot ADD COLUMN address TEXT DEFAULT '';"); } catch (e) {}
+
   return db;
 };
 
@@ -87,8 +93,8 @@ export const softDeleteEvent = async (id) => {
 export const insertNuqoot = async (n) => {
   const d = await getDB();
   await d.runAsync(
-    `INSERT INTO nuqoot (id, event_id, person_name, amount, phone, relation, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [n.id, n.event_id, n.person_name, n.amount, n.phone || '', n.relation || '', n.notes || '']
+    `INSERT INTO nuqoot (id, event_id, person_name, amount, phone, relation, address, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [n.id, n.event_id, n.person_name, n.amount, n.phone || '', n.relation || '', n.address || '', n.notes || '']
   );
 };
 
@@ -105,23 +111,23 @@ export const softDeleteNuqoot = async (id) => {
   await d.runAsync(`UPDATE nuqoot SET is_deleted = 1 WHERE id = ?`, [id]);
 };
 
-// ===== SEARCH & PEOPLE =====
+// ===== SEARCH & PEOPLE (محدث للبحث برقم الهاتف) =====
 export const searchPeople = async (query) => {
   const d = await getDB();
   return await d.getAllAsync(`
     SELECT 
       n.person_name, 
       MAX(n.phone) as phone,
-      MAX(n.relation) as relation,
+      MAX(n.address) as address,
       SUM(CASE WHEN e.direction = 'incoming' THEN n.amount ELSE 0 END) as total_received,
       SUM(CASE WHEN e.direction = 'outgoing' THEN n.amount ELSE 0 END) as total_given,
       COUNT(*) as total_events
     FROM nuqoot n 
     JOIN events e ON n.event_id = e.id
-    WHERE n.person_name LIKE ? AND n.is_deleted = 0 AND e.is_deleted = 0
+    WHERE (n.person_name LIKE ? OR n.phone LIKE ?) AND n.is_deleted = 0 AND e.is_deleted = 0
     GROUP BY n.person_name 
     ORDER BY n.person_name
-  `, [`%${query}%`]);
+  `, [`%${query}%`, `%${query}%`]);
 };
 
 export const getPersonHistory = async (name) => {
@@ -135,45 +141,26 @@ export const getPersonHistory = async (name) => {
   `, [name]);
 };
 
-// ===== STATS =====
+// ===== STATS & BACKUP (بدون تغيير) =====
 export const getGeneralStats = async () => {
   const d = await getDB();
-  const inc = await d.getFirstAsync(`
-    SELECT COALESCE(SUM(n.amount), 0) as t 
-    FROM nuqoot n JOIN events e ON n.event_id = e.id 
-    WHERE e.direction = 'incoming' AND n.is_deleted = 0 AND e.is_deleted = 0
-  `);
-  const out = await d.getFirstAsync(`
-    SELECT COALESCE(SUM(n.amount), 0) as t 
-    FROM nuqoot n JOIN events e ON n.event_id = e.id 
-    WHERE e.direction = 'outgoing' AND n.is_deleted = 0 AND e.is_deleted = 0
-  `);
+  const inc = await d.getFirstAsync(`SELECT COALESCE(SUM(n.amount), 0) as t FROM nuqoot n JOIN events e ON n.event_id = e.id WHERE e.direction = 'incoming' AND n.is_deleted = 0 AND e.is_deleted = 0`);
+  const out = await d.getFirstAsync(`SELECT COALESCE(SUM(n.amount), 0) as t FROM nuqoot n JOIN events e ON n.event_id = e.id WHERE e.direction = 'outgoing' AND n.is_deleted = 0 AND e.is_deleted = 0`);
   const ev = await d.getFirstAsync(`SELECT COUNT(*) as c FROM events WHERE is_deleted = 0`);
   const pp = await d.getFirstAsync(`SELECT COUNT(DISTINCT person_name) as c FROM nuqoot WHERE is_deleted = 0`);
-
-  return {
-    totalIncoming: inc?.t || 0,
-    totalOutgoing: out?.t || 0,
-    balance: (inc?.t || 0) - (out?.t || 0),
-    eventCount: ev?.c || 0,
-    peopleCount: pp?.c || 0
-  };
+  return { totalIncoming: inc?.t || 0, totalOutgoing: out?.t || 0, balance: (inc?.t || 0) - (out?.t || 0), eventCount: ev?.c || 0, peopleCount: pp?.c || 0 };
 };
 
 export const getTopPeople = async (direction, limit = 10) => {
   const d = await getDB();
   return await d.getAllAsync(`
     SELECT n.person_name, SUM(n.amount) as total_amount, COUNT(*) as times
-    FROM nuqoot n 
-    JOIN events e ON n.event_id = e.id
+    FROM nuqoot n JOIN events e ON n.event_id = e.id
     WHERE e.direction = ? AND n.is_deleted = 0 AND e.is_deleted = 0
-    GROUP BY n.person_name 
-    ORDER BY total_amount DESC 
-    LIMIT ?
+    GROUP BY n.person_name ORDER BY total_amount DESC LIMIT ?
   `, [direction, limit]);
 };
 
-// ===== BACKUP & RESTORE =====
 export const getFullBackup = async () => {
   const d = await getDB();
   const events = await d.getAllAsync('SELECT * FROM events WHERE is_deleted = 0');
@@ -185,20 +172,16 @@ export const restoreFromBackup = async (data) => {
   const d = await getDB();
   await d.runAsync('DELETE FROM nuqoot');
   await d.runAsync('DELETE FROM events');
-
   for (const e of data.events) {
     await d.runAsync(
-      `INSERT OR REPLACE INTO events (id, name, type, date, direction, location, notes, is_deleted, created_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      `INSERT OR REPLACE INTO events (id, name, type, date, direction, location, notes, is_deleted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
       [e.id, e.name, e.type, e.date, e.direction, e.location || '', e.notes || '', e.created_at || new Date().toISOString()]
     );
   }
-
   for (const n of data.nuqoot) {
     await d.runAsync(
-      `INSERT OR REPLACE INTO nuqoot (id, event_id, person_name, amount, phone, relation, notes, is_deleted, created_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-      [n.id, n.event_id, n.person_name, n.amount, n.phone || '', n.relation || '', n.notes || '', n.created_at || new Date().toISOString()]
+      `INSERT OR REPLACE INTO nuqoot (id, event_id, person_name, amount, phone, relation, address, notes, is_deleted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+      [n.id, n.event_id, n.person_name, n.amount, n.phone || '', n.relation || '', n.address || '', n.notes || '', n.created_at || new Date().toISOString()]
     );
   }
 };

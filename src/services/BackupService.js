@@ -1,13 +1,13 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy'; // تم الحل هنا
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
 import * as XLSX from 'xlsx';
 import { getFullBackup, restoreFromBackup, getDB } from '../database/LocalDB';
-import { generateId, formatCurrency, formatDate } from '../utils/helpers';
+import { generateId, formatCurrency } from '../utils/helpers';
 
 export const BackupService = {
-  // 📊 1. تصدير البيانات إلى ملف Excel (.xlsx) بكل التفاصيل
+  // 📊 تصدير Excel
   async exportToExcel() {
     try {
       const data = await getFullBackup();
@@ -19,30 +19,15 @@ export const BackupService = {
 
         if (nuqootList.length === 0) {
           excelRows.push({
-            'اسم المناسبة': ev.name,
-            'نوع المناسبة': ev.type,
-            'اتجاه النقوط': dirLabel,
-            'التاريخ': ev.date,
-            'البلد / المكان': ev.location || 'غير محدد',
-            'اسم الشخص': '-',
-            'صلة القرابة': '-',
-            'رقم الهاتف': '-',
-            'المبلغ (ج.م)': 0,
-            'ملاحظات': ev.notes || ''
+            'المناسبة': ev.name, 'النوع': ev.type, 'الاتجاه': dirLabel, 'التاريخ': ev.date,
+            'اسم الشخص': '-', 'المبلغ (ج.م)': 0, 'البلد/العنوان': '-', 'الهاتف': '-', 'القرابة': '-'
           });
         } else {
           nuqootList.forEach(n => {
             excelRows.push({
-              'اسم المناسبة': ev.name,
-              'نوع المناسبة': ev.type,
-              'اتجاه النقوط': dirLabel,
-              'التاريخ': ev.date,
-              'البلد / المكان': ev.location || 'غير محدد',
-              'اسم الشخص': n.person_name,
-              'صلة القرابة': n.relation || '-',
-              'رقم الهاتف': n.phone || '-',
-              'المبلغ (ج.م)': n.amount,
-              'ملاحظات': n.notes || ''
+              'المناسبة': ev.name, 'النوع': ev.type, 'الاتجاه': dirLabel, 'التاريخ': ev.date,
+              'اسم الشخص': n.person_name, 'المبلغ (ج.م)': n.amount, 
+              'البلد/العنوان': n.address || '-', 'الهاتف': n.phone || '-', 'القرابة': n.relation || '-'
             });
           });
         }
@@ -51,58 +36,40 @@ export const BackupService = {
       const ws = XLSX.utils.json_to_sheet(excelRows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "دفتر النقوط");
-
       const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+      
       const fileName = `Nuqoot_Excel_${new Date().toISOString().slice(0, 10)}.xlsx`;
       const uri = FileSystem.documentDirectory + fileName;
 
       await FileSystem.writeAsStringAsync(uri, wbout, { encoding: FileSystem.EncodingType.Base64 });
 
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          dialogTitle: 'تصدير جدول النقوط Excel'
-        });
+        await Sharing.shareAsync(uri, { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dialogTitle: 'مشاركة الإكسيل' });
       }
-      return { success: true, message: 'تم تصدير ملف Excel بنجاح' };
-    } catch (e) {
-      return { success: false, message: 'خطأ أثناء التصدير: ' + e.message };
-    }
+      return { success: true, message: 'تم التصدير بنجاح' };
+    } catch (e) { return { success: false, message: 'خطأ: ' + e.message }; }
   },
 
-  // 📥 2. استيراد البيانات من ملف Excel (.xlsx)
+  // 📥 استيراد Excel
   async importFromExcel() {
     try {
-      const res = await DocumentPicker.getDocumentAsync({
-        type: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'],
-        copyToCacheDirectory: true
-      });
+      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
+      if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم الإلغاء' };
 
-      if (res.canceled || !res.assets?.[0]) {
-        return { success: false, message: 'تم إلغاء الاختيار' };
-      }
-
-      const content = await FileSystem.readAsStringAsync(res.assets[0].uri, {
-        encoding: FileSystem.EncodingType.Base64
-      });
-
+      const content = await FileSystem.readAsStringAsync(res.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
       const wb = XLSX.read(content, { type: 'base64' });
-      const wsName = wb.SheetNames[0];
-      const ws = wb.Sheets[wsName];
+      const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws);
 
-      if (rows.length === 0) {
-        return { success: false, message: 'ملف Excel فارغ' };
-      }
+      if (rows.length === 0) return { success: false, message: 'الملف فارغ' };
 
       const db = await getDB();
       const eventsMap = new Map();
 
       for (const row of rows) {
-        const evName = row['اسم المناسبة'] || row['المناسبة'] || 'مناسبة مستوردة';
+        const evName = row['المناسبة'] || row['اسم المناسبة'] || 'مناسبة مستوردة';
         const evDate = row['التاريخ'] || new Date().toISOString().slice(0, 10);
-        const evDir = (row['اتجاه النقوط'] || '').includes('صادرة') ? 'outgoing' : 'incoming';
-        const evLoc = row['البلد / المكان'] || row['المكان'] || '';
+        const evDir = (row['الاتجاه'] || '').includes('صادرة') ? 'outgoing' : 'incoming';
         const evKey = `${evName}_${evDate}_${evDir}`;
 
         let eventId = eventsMap.get(evKey);
@@ -110,8 +77,8 @@ export const BackupService = {
           eventId = generateId();
           eventsMap.set(evKey, eventId);
           await db.runAsync(
-            `INSERT INTO events (id, name, type, date, direction, location, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [eventId, evName, 'other', evDate, evDir, evLoc, 'مستورد من Excel']
+            `INSERT INTO events (id, name, type, date, direction, notes) VALUES (?, ?, ?, ?, ?, ?)`,
+            [eventId, evName, 'other', evDate, evDir, 'مستورد']
           );
         }
 
@@ -120,145 +87,60 @@ export const BackupService = {
 
         if (personName && personName !== '-' && amount > 0) {
           await db.runAsync(
-            `INSERT INTO nuqoot (id, event_id, person_name, amount, phone, relation, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [generateId(), eventId, personName, amount, row['رقم الهاتف'] || '', row['صلة القرابة'] || '', row['ملاحظات'] || '']
+            `INSERT INTO nuqoot (id, event_id, person_name, amount, phone, relation, address, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [generateId(), eventId, personName, amount, row['الهاتف'] || '', row['القرابة'] || '', row['البلد/العنوان'] || row['البلد'] || '', '']
           );
         }
       }
-
-      return { success: true, message: 'تم استيراد البيانات من Excel بنجاح' };
-    } catch (e) {
-      return { success: false, message: 'تعذر قراءة ملف Excel: ' + e.message };
-    }
+      return { success: true, message: 'تم الاستيراد بنجاح' };
+    } catch (e) { return { success: false, message: 'تعذر القراءة: ' + e.message }; }
   },
 
-  // 📄 3. تصدير تقرير PDF احترافي وجاهز لإرساله عبر الواتساب
+  // 📄 تقرير PDF
   async exportToPDF() {
     try {
       const data = await getFullBackup();
       let totalIn = 0, totalOut = 0;
-
-      let htmlContent = `
-        <html dir="rtl">
-        <head>
-          <meta charset="utf-8">
-          <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 20px; background-color: #f9f9f9; text-align: right; }
-            h1 { color: #1B5E20; text-align: center; font-size: 24px; margin-bottom: 5px; }
-            .subtitle { text-align: center; color: #666; font-size: 14px; margin-bottom: 20px; }
-            .card { background: #fff; border-radius: 10px; padding: 15px; margin-bottom: 15px; border: 1px solid #ddd; }
-            .event-header { font-size: 16px; font-weight: bold; color: #1B5E20; border-bottom: 2px solid #1B5E20; padding-bottom: 5px; margin-bottom: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-            th, td { border: 1px solid #e0e0e0; padding: 8px; text-align: right; font-size: 12px; }
-            th { background-color: #E8F5E9; color: #1B5E20; font-weight: bold; }
-            .total-box { background: #1B5E20; color: #fff; padding: 15px; border-radius: 10px; margin-top: 20px; text-align: center; }
-          </style>
-        </head>
-        <body>
-          <h1>📒 دفتر النقوط - تقرير شامل</h1>
-          <div class="subtitle">تاريخ التقرير: ${new Date().toLocaleDateString('ar-EG')}</div>
-      `;
+      let html = `<html dir="rtl"><head><meta charset="utf-8"><style>body{font-family:sans-serif;padding:20px;text-align:right}h1{color:#1B5E20;text-align:center}.card{border:1px solid #ddd;padding:15px;margin-bottom:15px;border-radius:10px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border:1px solid #ddd;padding:8px}th{background:#E8F5E9;color:#1B5E20}</style></head><body><h1>دفتر النقوط - تقرير شامل</h1>`;
 
       for (const ev of data.events) {
-        const nuqootList = data.nuqoot.filter(n => n.event_id === ev.id);
-        let evTotal = 0;
-        const dirLabel = ev.direction === 'incoming' ? '📥 نقوط واردة (ليّا)' : '📤 نقوط صادرة (عليّا)';
-
-        htmlContent += `
-          <div class="card">
-            <div class="event-header">📌 ${ev.name} (${dirLabel})</div>
-            <div>📅 التاريخ: ${ev.date} ${ev.location ? ` | 📍 المكان: ${ev.location}` : ''}</div>
-            <table>
-              <thead>
-                <tr>
-                  <th>م</th>
-                  <th>اسم الشخص</th>
-                  <th>صلة القرابة</th>
-                  <th>الهاتف</th>
-                  <th>المبلغ</th>
-                </tr>
-              </thead>
-              <tbody>
-        `;
-
-        nuqootList.forEach((n, idx) => {
-          evTotal += n.amount;
-          htmlContent += `
-            <tr>
-              <td>${idx + 1}</td>
-              <td><b>${n.person_name}</b></td>
-              <td>${n.relation || '-'}</td>
-              <td>${n.phone || '-'}</td>
-              <td><b>${formatCurrency(n.amount)} ج.م</b></td>
-            </tr>
-          `;
+        const ns = data.nuqoot.filter(n => n.event_id === ev.id);
+        let sum = 0;
+        html += `<div class="card"><h3>📌 ${ev.name} (${ev.date})</h3><table><tr><th>الاسم</th><th>البلد/العنوان</th><th>الهاتف</th><th>المبلغ</th></tr>`;
+        ns.forEach(n => {
+          sum += n.amount;
+          html += `<tr><td><b>${n.person_name}</b></td><td>${n.address||'-'}</td><td>${n.phone||'-'}</td><td><b>${formatCurrency(n.amount)}</b></td></tr>`;
         });
-
-        htmlContent += `
-              </tbody>
-            </table>
-            <div style="margin-top: 8px; font-weight: bold; color: #333;">إجمالي المناسبة: ${formatCurrency(evTotal)} ج.م</div>
-          </div>
-        `;
-
-        if (ev.direction === 'incoming') totalIn += evTotal;
-        else totalOut += evTotal;
+        html += `</table><h4>إجمالي المناسبة: ${formatCurrency(sum)} ج.م</h4></div>`;
+        if (ev.direction === 'incoming') totalIn += sum; else totalOut += sum;
       }
+      html += `<div style="background:#1B5E20;color:#fff;padding:15px;border-radius:10px;text-align:center"><h3>إجمالي الوارد: ${formatCurrency(totalIn)} | إجمالي الصادر: ${formatCurrency(totalOut)}</h3><h2>الصافي: ${formatCurrency(totalIn - totalOut)} ج.م</h2></div></body></html>`;
 
-      htmlContent += `
-        <div class="total-box">
-          <h3>⚖️ ملخص الحساب الكلي</h3>
-          <p>📥 إجمالي الوارد (ليّا): ${formatCurrency(totalIn)} ج.م</p>
-          <p>📤 إجمالي الصادر (عليّا): ${formatCurrency(totalOut)} ج.م</p>
-          <h2>صافي الرصيد: ${formatCurrency(totalIn - totalOut)} ج.م</h2>
-        </div>
-        </body>
-        </html>
-      `;
-
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'مشاركة التقرير عبر الواتساب'
-        });
-      }
-      return { success: true, message: 'تم إنشاء تقرير PDF بنجاح' };
-    } catch (e) {
-      return { success: false, message: 'خطأ أثناء إنشاء PDF: ' + e.message };
-    }
+      const { uri } = await Print.printToFileAsync({ html });
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: 'application/pdf' });
+      return { success: true };
+    } catch (e) { return { success: false, message: e.message }; }
   },
 
-  // 📄 4. تصدير وتمرير كملف JSON
+  // 💾 التصدير كملف JSON
   async exportToFile() {
     try {
       const data = await getFullBackup();
-      const json = JSON.stringify(data, null, 2);
-      const name = `nuqoot_backup_${new Date().toISOString().slice(0, 10)}.json`;
-      const uri = FileSystem.documentDirectory + name;
-      await FileSystem.writeAsStringAsync(uri, json, { encoding: FileSystem.EncodingType.UTF8 });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri);
-      }
-      return { success: true, message: 'تم تصدير ملف النسخة الاحتياطية' };
-    } catch (e) {
-      return { success: false, message: e.message };
-    }
+      const uri = FileSystem.documentDirectory + `nuqoot_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      await FileSystem.writeAsStringAsync(uri, JSON.stringify(data), { encoding: FileSystem.EncodingType.UTF8 });
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+      return { success: true, message: 'تم التصدير' };
+    } catch (e) { return { success: false, message: e.message }; }
   },
 
-  // 📥 5. استيراد JSON
+  // 📥 استيراد JSON
   async importFromFile() {
     try {
-      const res = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true });
+      const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم الإلغاء' };
       const content = await FileSystem.readAsStringAsync(res.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
-      const data = JSON.parse(content);
-      if (!data.events || !data.nuqoot) return { success: false, message: 'ملف غير صالح' };
-      await restoreFromBackup(data);
-      return { success: true, message: `تم استعادة البيانات بنجاح` };
-    } catch (e) {
-      return { success: false, message: e.message };
-    }
+      await restoreFromBackup(JSON.parse(content));
+      return { success: true, message: `تم الاستعادة` };
+    } catch (e) { return { success: false, message: e.message }; }
   }
 };
