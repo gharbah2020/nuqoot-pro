@@ -1,0 +1,27 @@
+workflows:
+  android-apk:
+    name: Build NuqootPro Release APK
+    max_build_duration: 30
+    instance_type: mac_mini_m1
+    environment:
+      node: 20
+      java: 17
+    scripts:
+      - name: Install dependencies
+        script: npm install
+      - name: Generate Android Folder
+        script: npx expo prebuild --platform android
+      - name: Build APK via Gradle
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
+    artifacts:
+      - android/app/build/outputs/apk/release/*.apk
+    publishing:
+      email:
+        recipients:
+          - gharbah2020@gmail.com
+        notify:
+          success: true
+          failure: true
