@@ -24,28 +24,37 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 4. Install Dependencies
+      - name: 4. Setup Fast Gradle Action
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: 5. Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: 5. Generate Android Native Project
+      - name: 6. Generate Android Native Project
         run: npx expo prebuild --platform android --clean
         env:
           CI: true
+          EXPO_NO_TELEMETRY: 1
 
-      - name: 6. Generate Release Keystore Signature
+      - name: 7. Configure Release Keystore
         run: |
           cd android/app
           rm -f debug.keystore
           keytool -genkeypair -v -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -keystore debug.keystore -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 7. Build Android Release APK via Gradle
+      - name: 8. Build Android Release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease -x lint -x test --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m"
+          ./gradlew assembleRelease --no-daemon --console=plain -x test -x lint
+        env:
+          CI: true
+          EXPO_NO_TELEMETRY: 1
+          NODE_OPTIONS: "--max-old-space-size=4096"
+          _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 8. Upload Release APK Artifact
+      - name: 9. Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: NuqootPro-APK-Final
