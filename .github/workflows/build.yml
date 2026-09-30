@@ -27,21 +27,22 @@ jobs:
       - name: 4. Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: 5. Generate Android Project
+      - name: 5. Generate Android Native Project
         run: npx expo prebuild --platform android --clean
         env:
           CI: true
 
-      - name: 6. Configure Keystore Signature for In-Place App Updates
+      - name: 6. Generate Release Keystore Signature
         run: |
           cd android/app
+          keytool -genkeypair -v -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -keystore debug.keystore -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 7. Build Release APK with High Memory Allocation
+      - name: 7. Build Android Release APK via Gradle
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx6144m -XX:MaxMetaspaceSize=1024m"
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4096m"
 
       - name: 8. Upload Release APK Artifact
         uses: actions/upload-artifact@v4
