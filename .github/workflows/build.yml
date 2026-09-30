@@ -1,16 +1,16 @@
 name: Build NuqootPro Release APK
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main, master ]
-  workflow_dispatch:
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Checkout Code
+      - name: 1. Checkout Repository
         uses: actions/checkout@v4
 
       - name: 2. Set up Java JDK 17
@@ -27,20 +27,24 @@ jobs:
       - name: 4. Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: 5. Fix & Align Expo Packages
-        run: npx expo install --fix
-
-      - name: 6. Prebuild Android Project
+      - name: 5. Generate Android Project
         run: npx expo prebuild --platform android --clean
+        env:
+          CI: true
 
-      - name: 7. Build Android Release APK via Gradle
+      - name: 6. Configure Keystore Signature for In-Place App Updates
+        run: |
+          cd android/app
+          sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
+
+      - name: 7. Build Release APK with High Memory Allocation
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx6144m -XX:MaxMetaspaceSize=1024m"
 
       - name: 8. Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: NuqootPro-APK-Final
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: android/app/build/outputs/apk/**/*.apk
