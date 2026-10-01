@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
@@ -7,7 +7,7 @@ import { getFullBackup, restoreFromBackup, getDB } from '../database/LocalDB';
 import { generateId, formatCurrency } from '../utils/helpers';
 
 export const BackupService = {
-  // 📊 1. تصدير Excel (.xlsx)
+  // 📊 1. تصدير Excel
   async exportToExcel() {
     try {
       const data = await getFullBackup();
@@ -44,13 +44,13 @@ export const BackupService = {
       await FileSystem.writeAsStringAsync(uri, wbout, { encoding: FileSystem.EncodingType.Base64 });
 
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dialogTitle: 'مشاركة ملف الإكسيل' });
+        await Sharing.shareAsync(uri, { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dialogTitle: 'مشاركة الإكسيل' });
       }
       return { success: true, message: 'تم التصدير بنجاح' };
     } catch (e) { return { success: false, message: 'خطأ: ' + e.message }; }
   },
 
-  // 📥 2. استيراد Excel (.xlsx)
+  // 📥 2. استيراد Excel
   async importFromExcel() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
@@ -78,7 +78,7 @@ export const BackupService = {
           eventsMap.set(evKey, eventId);
           await db.runAsync(
             `INSERT INTO events (id, name, type, date, direction, notes) VALUES (?, ?, ?, ?, ?, ?)`,
-            [eventId, evName, 'other', evDate, evDir, 'مستورد من Excel']
+            [eventId, evName, 'other', evDate, evDir, 'مستورد']
           );
         }
 
@@ -92,11 +92,11 @@ export const BackupService = {
           );
         }
       }
-      return { success: true, message: 'تم استيراد البيانات بنجاح' };
+      return { success: true, message: 'تم الاستيراد بنجاح' };
     } catch (e) { return { success: false, message: 'تعذر القراءة: ' + e.message }; }
   },
 
-  // 📄 3. تصدير تقرير PDF
+  // 📄 3. تصدير PDF
   async exportToPDF() {
     try {
       const data = await getFullBackup();
@@ -122,25 +122,25 @@ export const BackupService = {
     } catch (e) { return { success: false, message: e.message }; }
   },
 
-  // 💾 4. تصدير ملف JSON (النسخ الاحتياطي)
+  // 💾 4. تصدير JSON
   async exportToFile() {
     try {
       const data = await getFullBackup();
       const uri = FileSystem.documentDirectory + `nuqoot_backup_${new Date().toISOString().slice(0, 10)}.json`;
       await FileSystem.writeAsStringAsync(uri, JSON.stringify(data), { encoding: FileSystem.EncodingType.UTF8 });
       if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
-      return { success: true, message: 'تم التصدير بنجاح' };
+      return { success: true, message: 'تم التصدير' };
     } catch (e) { return { success: false, message: e.message }; }
   },
 
-  // 📥 5. استيراد JSON (استعادة النسخة الاحتياطية)
+  // 📥 5. استيراد JSON
   async importFromFile() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم الإلغاء' };
       const content = await FileSystem.readAsStringAsync(res.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
       await restoreFromBackup(JSON.parse(content));
-      return { success: true, message: `تمت الاستعادة بنجاح` };
+      return { success: true, message: `تم الاستعادة` };
     } catch (e) { return { success: false, message: e.message }; }
   }
 };
