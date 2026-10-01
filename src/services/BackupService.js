@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy'; // تم الحل هنا
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
@@ -7,7 +7,7 @@ import { getFullBackup, restoreFromBackup, getDB } from '../database/LocalDB';
 import { generateId, formatCurrency } from '../utils/helpers';
 
 export const BackupService = {
-  // 📊 تصدير Excel
+  // 📊 1. تصدير Excel (.xlsx)
   async exportToExcel() {
     try {
       const data = await getFullBackup();
@@ -50,7 +50,7 @@ export const BackupService = {
     } catch (e) { return { success: false, message: 'خطأ: ' + e.message }; }
   },
 
-  // 📥 استيراد Excel
+  // 📥 2. استيراد Excel (.xlsx)
   async importFromExcel() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
@@ -96,7 +96,7 @@ export const BackupService = {
     } catch (e) { return { success: false, message: 'تعذر القراءة: ' + e.message }; }
   },
 
-  // 📄 تقرير PDF
+  // 📄 3. تصدير تقرير PDF
   async exportToPDF() {
     try {
       const data = await getFullBackup();
@@ -122,7 +122,7 @@ export const BackupService = {
     } catch (e) { return { success: false, message: e.message }; }
   },
 
-  // 💾 التصدير كملف JSON
+  // 💾 4. تصدير JSON
   async exportToFile() {
     try {
       const data = await getFullBackup();
@@ -133,7 +133,7 @@ export const BackupService = {
     } catch (e) { return { success: false, message: e.message }; }
   },
 
-  // 📥 استيراد JSON
+  // 📥 5. استيراد JSON
   async importFromFile() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
