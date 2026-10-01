@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, TextInput } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getEventById, getNuqootByEvent, softDeleteNuqoot, softDeleteEvent } from '../database/LocalDB';
@@ -11,6 +11,7 @@ const EventDetailScreen = ({ route, navigation }) => {
   const { eventId } = route.params;
   const [event, setEvent] = useState(null);
   const [list, setList] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const load = async () => {
     setEvent(await getEventById(eventId));
@@ -24,11 +25,16 @@ const EventDetailScreen = ({ route, navigation }) => {
   const type = getEventType(event.type);
   const dir = getDirectionInfo(event.direction);
 
+  // فلترة البحث الداخلي
+  const filteredList = list.filter(item => 
+    item.person_name.includes(searchQuery) || (item.phone && item.phone.includes(searchQuery))
+  );
+
   const handleAction = (item) => {
-    Alert.alert('خيارات', `ماذا تريد أن تفعل ببيانات ${item.person_name}؟`, [
+    Alert.alert('خيارات السجل', `ماذا تريد أن تفعل ببيانات (${item.person_name})؟`, [
       { text: 'إلغاء', style: 'cancel' },
-      { text: 'تعديل البيانات', onPress: () => Alert.alert('قريباً', 'سيتم فتح شاشة التعديل في التحديث القادم') },
-      { text: 'حذف', style: 'destructive', onPress: async () => { await softDeleteNuqoot(item.id); load(); } }
+      { text: '✏️ تعديل المبلغ / البيانات', onPress: () => navigation.navigate('AddNuqoot', { eventId: event.id, direction: event.direction, editItem: item }) },
+      { text: '🗑️ حذف', style: 'destructive', onPress: async () => { await softDeleteNuqoot(item.id); load(); } }
     ]);
   };
 
@@ -46,7 +52,7 @@ const EventDetailScreen = ({ route, navigation }) => {
       </View>
 
       <FlatList
-        data={list}
+        data={filteredList}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity onPress={() => handleAction(item)}>
@@ -58,12 +64,18 @@ const EventDetailScreen = ({ route, navigation }) => {
             <View style={styles.infoCard}>
               <Text style={{ fontSize: 40 }}>{type.icon}</Text>
               <Text style={styles.evName}>{event.name}</Text>
-              <Text style={styles.evMeta}>📅 {formatDate(event.date)} {event.location ? ` | 📍 ${event.location}` : ''}</Text>
+              <Text style={styles.evMeta}>📅 {formatDate(event.date)}</Text>
               <View style={[styles.badge, { backgroundColor: dir.bg }]}><Text style={[styles.badgeT, { color: dir.color }]}>{dir.label}</Text></View>
             </View>
             <View style={styles.statsRow}>
               <View style={[styles.statBox, { backgroundColor: '#fff' }]}><Text style={styles.statV}>{list.length}</Text><Text style={styles.statL}>عدد الأشخاص</Text></View>
               <View style={[styles.statBox, { backgroundColor: dir.bg }]}><Text style={[styles.statV, { color: dir.color }]}>{formatCurrency(event.total_amount)}</Text><Text style={styles.statL}>الإجمالي (ج.م)</Text></View>
+            </View>
+
+            {/* شريط البحث الداخلي */}
+            <View style={styles.searchContainer}>
+              <Ionicons name="search" size={20} color="#888" />
+              <TextInput style={styles.searchInput} value={searchQuery} onChangeText={setSearchQuery} placeholder="بحث عن شخص داخل هذه المناسبة..." textAlign="right" />
             </View>
           </View>
         }
@@ -89,6 +101,8 @@ const styles = StyleSheet.create({
   statBox: { flex: 1, padding: 15, borderRadius: 16, alignItems: 'center', marginHorizontal: 5, elevation: 2 },
   statV: { fontSize: 18, fontWeight: 'bold', color: '#333' },
   statL: { fontSize: 11, color: '#888', marginTop: 4 },
+  searchContainer: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 10, paddingHorizontal: 15, borderRadius: 12, elevation: 2 },
+  searchInput: { flex: 1, paddingVertical: 12, fontSize: 14, marginRight: 10, color: COLORS.text },
   fab: { position: 'absolute', bottom: 20, left: 20, width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', elevation: 8 },
 });
 
