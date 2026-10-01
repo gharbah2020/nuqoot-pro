@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
@@ -7,7 +7,7 @@ import { getFullBackup, restoreFromBackup, getDB } from '../database/LocalDB';
 import { generateId, formatCurrency } from '../utils/helpers';
 
 export const BackupService = {
-  // 📊 1. تصدير Excel
+  // 📊 1. تصدير Excel (.xlsx)
   async exportToExcel() {
     try {
       const data = await getFullBackup();
@@ -38,30 +38,41 @@ export const BackupService = {
       XLSX.utils.book_append_sheet(wb, ws, "دفتر النقوط");
       const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
       
-      const fileName = `Nuqoot_Excel_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      const uri = FileSystem.documentDirectory + fileName;
+      const fileName = `Nuqoot_Excel_${Date.now()}.xlsx`;
+      const uri = (FileSystem.cacheDirectory || FileSystem.documentDirectory) + fileName;
 
       await FileSystem.writeAsStringAsync(uri, wbout, { encoding: FileSystem.EncodingType.Base64 });
 
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', dialogTitle: 'مشاركة الإكسيل' });
+        await Sharing.shareAsync(uri, { 
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+          dialogTitle: 'مشاركة ملف الإكسيل' 
+        });
       }
-      return { success: true, message: 'تم التصدير بنجاح' };
-    } catch (e) { return { success: false, message: 'خطأ: ' + e.message }; }
+      return { success: true, message: 'تم تصدير ملف الإكسيل بنجاح' };
+    } catch (e) { 
+      return { success: false, message: 'خطأ أثناء التصدير: ' + e.message }; 
+    }
   },
 
-  // 📥 2. استيراد Excel
+  // 📥 2. استيراد Excel (.xlsx)
   async importFromExcel() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-      if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم الإلغاء' };
+      if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم إلغاء اختيار الملف' };
 
-      const content = await FileSystem.readAsStringAsync(res.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      const pickedUri = res.assets[0].uri;
+      const content = await FileSystem.readAsStringAsync(pickedUri, { encoding: FileSystem.EncodingType.Base64 });
       const wb = XLSX.read(content, { type: 'base64' });
+
+      if (!wb.SheetNames || wb.SheetNames.length === 0) {
+        return { success: false, message: 'ملف الإكسيل غير صالح' };
+      }
+
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws);
 
-      if (rows.length === 0) return { success: false, message: 'الملف فارغ' };
+      if (!rows || rows.length === 0) return { success: false, message: 'لا توجد بيانات داخل شيت الإكسيل' };
 
       const db = await getDB();
       const eventsMap = new Map();
@@ -78,7 +89,7 @@ export const BackupService = {
           eventsMap.set(evKey, eventId);
           await db.runAsync(
             `INSERT INTO events (id, name, type, date, direction, notes) VALUES (?, ?, ?, ?, ?, ?)`,
-            [eventId, evName, 'other', evDate, evDir, 'مستورد']
+            [eventId, evName, 'other', evDate, evDir, 'مستورد من Excel']
           );
         }
 
@@ -88,15 +99,26 @@ export const BackupService = {
         if (personName && personName !== '-' && amount > 0) {
           await db.runAsync(
             `INSERT INTO nuqoot (id, event_id, person_name, amount, phone, relation, address, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [generateId(), eventId, personName, amount, row['الهاتف'] || '', row['القرابة'] || '', row['البلد/العنوان'] || row['البلد'] || '', '']
+            [
+              generateId(), 
+              eventId, 
+              String(personName).trim(), 
+              amount, 
+              row['الهاتف'] ? String(row['الهاتف']) : '', 
+              row['القرابة'] ? String(row['القرابة']) : '', 
+              row['البلد/العنوان'] || row['البلد'] || row['العنوان'] || '', 
+              ''
+            ]
           );
         }
       }
-      return { success: true, message: 'تم الاستيراد بنجاح' };
-    } catch (e) { return { success: false, message: 'تعذر القراءة: ' + e.message }; }
+      return { success: true, message: 'تم استيراد بيانات الإكسيل بنجاح' };
+    } catch (e) { 
+      return { success: false, message: 'تعذر القراءة: ' + e.message }; 
+    }
   },
 
-  // 📄 3. تصدير PDF
+  // 📄 3. تصدير تقرير PDF
   async exportToPDF() {
     try {
       const data = await getFullBackup();
@@ -117,30 +139,44 @@ export const BackupService = {
       html += `<div style="background:#1B5E20;color:#fff;padding:15px;border-radius:10px;text-align:center"><h3>إجمالي الوارد: ${formatCurrency(totalIn)} | إجمالي الصادر: ${formatCurrency(totalOut)}</h3><h2>الصافي: ${formatCurrency(totalIn - totalOut)} ج.م</h2></div></body></html>`;
 
       const { uri } = await Print.printToFileAsync({ html });
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: 'application/pdf' });
-      return { success: true };
-    } catch (e) { return { success: false, message: e.message }; }
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'مشاركة تقرير PDF' });
+      }
+      return { success: true, message: 'تم إنشاء تقرير PDF بنجاح' };
+    } catch (e) { 
+      return { success: false, message: 'خطأ: ' + e.message }; 
+    }
   },
 
-  // 💾 4. تصدير JSON
+  // 💾 4. تصدير ملف JSON (النسخ الاحتياطي)
   async exportToFile() {
     try {
       const data = await getFullBackup();
-      const uri = FileSystem.documentDirectory + `nuqoot_backup_${new Date().toISOString().slice(0, 10)}.json`;
-      await FileSystem.writeAsStringAsync(uri, JSON.stringify(data), { encoding: FileSystem.EncodingType.UTF8 });
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
-      return { success: true, message: 'تم التصدير' };
-    } catch (e) { return { success: false, message: e.message }; }
+      const fileName = `nuqoot_backup_${Date.now()}.json`;
+      const uri = (FileSystem.cacheDirectory || FileSystem.documentDirectory) + fileName;
+      await FileSystem.writeAsStringAsync(uri, JSON.stringify(data, null, 2), { encoding: FileSystem.EncodingType.UTF8 });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'application/json', dialogTitle: 'تصدير ملف النسخة الاحتياطية' });
+      }
+      return { success: true, message: 'تم تصدير ملف النسخة الاحتياطية بنجاح' };
+    } catch (e) { 
+      return { success: false, message: 'خطأ أثناء التصدير: ' + e.message }; 
+    }
   },
 
-  // 📥 5. استيراد JSON
+  // 📥 5. استيراد JSON (استعادة النسخة الاحتياطية)
   async importFromFile() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
-      if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم الإلغاء' };
-      const content = await FileSystem.readAsStringAsync(res.assets[0].uri, { encoding: FileSystem.EncodingType.UTF8 });
-      await restoreFromBackup(JSON.parse(content));
-      return { success: true, message: `تم الاستعادة` };
-    } catch (e) { return { success: false, message: e.message }; }
+      if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم إلغاء اختيار الملف' };
+      const pickedUri = res.assets[0].uri;
+      const content = await FileSystem.readAsStringAsync(pickedUri, { encoding: FileSystem.EncodingType.UTF8 });
+      const data = JSON.parse(content);
+      if (!data.events || !data.nuqoot) return { success: false, message: 'ملف النسخة الاحتياطية غير صالح' };
+      await restoreFromBackup(data);
+      return { success: true, message: `تمت استعادة البيانات بنجاح (${data.events.length} مناسبة)` };
+    } catch (e) { 
+      return { success: false, message: 'تعذر الاستعادة: ' + e.message }; 
+    }
   }
 };
