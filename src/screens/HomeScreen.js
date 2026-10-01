@@ -1,16 +1,12 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, StatusBar, RefreshControl, ScrollView } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import { getAllEvents, getGeneralStats } from '../database/LocalDB';
 import EventCard from '../components/EventCard';
 import SummaryCard from '../components/SummaryCard';
 import { COLORS } from '../utils/theme';
 import { formatDateShort } from '../utils/helpers';
-
-// إعداد الإشعارات
-Notifications.setNotificationHandler({ handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false }) });
 
 const HomeScreen = ({ navigation }) => {
   const [events, setEvents] = useState([]);
@@ -19,18 +15,11 @@ const HomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState('all');
 
-  useEffect(() => {
-    (async () => {
-      const { status } = await Notifications.requestPermissionsAsync();
-      if (status !== 'granted') alert('يرجى تفعيل الإشعارات للتنبيه بالمناسبات القادمة');
-    })();
-  }, []);
-
   const load = async () => {
     const all = await getAllEvents();
-    const today = new Date().toISOString().slice(0,10);
+    const today = new Date().toISOString().slice(0, 10);
     
-    // فصل المناسبات القادمة عن السابقة
+    // فصل المناسبات القادمة عن المناسبات السابقة
     const upc = all.filter(e => e.date > today).reverse();
     const past = all.filter(e => e.date <= today);
     
@@ -61,7 +50,7 @@ const HomeScreen = ({ navigation }) => {
           <View>
             <SummaryCard totalIncoming={stats.totalIncoming} totalOutgoing={stats.totalOutgoing} />
             
-            {/* قسم المناسبات القادمة (تصميم جديد) */}
+            {/* قسم المناسبات القادمة */}
             {upcoming.length > 0 && (
               <View style={styles.upcomingSection}>
                 <Text style={styles.secTitle}>⏰ مناسبات قادمة قريباً</Text>
