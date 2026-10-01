@@ -12,7 +12,7 @@ const SettingsScreen = ({ navigation }) => {
     setLoading(true);
     const res = await BackupService.exportToExcel();
     setLoading(false);
-    if (!res.success) Alert.alert('خطأ', res.message);
+    if (res.message) Alert.alert(res.success ? 'نجاح ✅' : 'خطأ ⚠️', res.message);
   };
 
   const handleExcelImport = async () => {
@@ -24,7 +24,7 @@ const SettingsScreen = ({ navigation }) => {
           setLoading(true);
           const res = await BackupService.importFromExcel();
           setLoading(false);
-          Alert.alert(res.success ? 'نجاح ✅' : 'خطأ', res.message);
+          Alert.alert(res.success ? 'نجاح ✅' : 'خطأ ⚠️', res.message);
         }
       }
     ]);
@@ -34,20 +34,30 @@ const SettingsScreen = ({ navigation }) => {
     setLoading(true);
     const res = await BackupService.exportToPDF();
     setLoading(false);
-    if (!res.success) Alert.alert('خطأ', res.message);
+    if (res.message) Alert.alert(res.success ? 'نجاح ✅' : 'خطأ ⚠️', res.message);
   };
 
   const handleJSONExport = async () => {
     setLoading(true);
     const res = await BackupService.exportToFile();
     setLoading(false);
+    if (res.message) Alert.alert(res.success ? 'نجاح ✅' : 'خطأ ⚠️', res.message);
   };
 
   const handleJSONImport = async () => {
-    setLoading(true);
-    const res = await BackupService.importFromFile();
-    setLoading(false);
-    if (res.success) Alert.alert('نجاح ✅', res.message);
+    Alert.alert('استعادة نسخة احتياطية', 'هل ترغب في استبدال البيانات الحالية بالبيانات الموجودة بالملف؟', [
+      { text: 'إلغاء', style: 'cancel' },
+      {
+        text: 'متابعة واستعادة',
+        style: 'destructive',
+        onPress: async () => {
+          setLoading(true);
+          const res = await BackupService.importFromFile();
+          setLoading(false);
+          Alert.alert(res.success ? 'نجاح ✅' : 'خطأ ⚠️', res.message);
+        }
+      }
+    ]);
   };
 
   return (
