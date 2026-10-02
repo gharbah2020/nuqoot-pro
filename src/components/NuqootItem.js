@@ -1,11 +1,21 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatCurrency, getDirectionInfo } from '../utils/helpers';
 import { COLORS } from '../utils/theme';
 
 const NuqootItem = ({ item, direction, onDelete }) => {
   const dir = getDirectionInfo(direction);
+
+  const openWhatsApp = () => {
+    if (!item.phone) return Alert.alert('تنبيه', 'لا يوجد رقم هاتف مسجل لهذا الشخص');
+    Linking.openURL(`whatsapp://send?phone=+2${item.phone}`);
+  };
+
+  const makeCall = () => {
+    if (!item.phone) return Alert.alert('تنبيه', 'لا يوجد رقم هاتف مسجل لهذا الشخص');
+    Linking.openURL(`tel:${item.phone}`);
+  };
 
   return (
     <View style={styles.card}>
@@ -25,8 +35,20 @@ const NuqootItem = ({ item, direction, onDelete }) => {
 
       <View style={styles.info}>
         <Text style={styles.name}>{item.person_name}</Text>
-        {/* السطر ده تم تحديثه لإظهار البلد/العنوان جنب القرابة والهاتف */}
-        <Text style={styles.sub}>{[item.relation, item.address, item.phone].filter(Boolean).join(' • ')}</Text>
+        <Text style={styles.sub}>{[item.relation, item.address].filter(Boolean).join(' • ')}</Text>
+        
+        {item.phone ? (
+          <View style={styles.contactRow}>
+            <Text style={styles.phoneText}>{item.phone}</Text>
+            <TouchableOpacity onPress={openWhatsApp} style={styles.iconBtn}>
+              <Ionicons name="logo-whatsapp" size={16} color="#25D366" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={makeCall} style={styles.iconBtn}>
+              <Ionicons name="call" size={16} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {item.notes ? <Text style={styles.notes}>📝 {item.notes}</Text> : null}
       </View>
 
@@ -39,20 +61,22 @@ const NuqootItem = ({ item, direction, onDelete }) => {
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#fff', marginHorizontal: 16, marginVertical: 4,
-    padding: 12, borderRadius: 14, elevation: 1
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', 
+    marginHorizontal: 16, marginVertical: 6, padding: 12, borderRadius: 14, elevation: 1
   },
-  av: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  avT: { fontSize: 17, fontWeight: 'bold' },
-  info: { flex: 1, marginRight: 10, alignItems: 'flex-end' },
-  name: { fontSize: 15, fontWeight: 'bold', color: COLORS.text },
-  sub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
-  notes: { fontSize: 11, color: COLORS.textHint, marginTop: 2 },
-  amtBox: { alignItems: 'center', marginLeft: 8 },
-  amount: { fontSize: 16, fontWeight: 'bold' },
-  cur: { fontSize: 10, color: COLORS.textHint },
-  del: { padding: 6, marginLeft: 2 },
+  av: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center' },
+  avT: { fontSize: 18, fontWeight: 'bold' },
+  info: { flex: 1, marginRight: 12, alignItems: 'flex-end' },
+  name: { fontSize: 16, fontWeight: 'bold', color: COLORS.text },
+  sub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
+  notes: { fontSize: 11, color: COLORS.textHint, marginTop: 4 },
+  amtBox: { alignItems: 'center', marginLeft: 10 },
+  amount: { fontSize: 17, fontWeight: 'bold' },
+  cur: { fontSize: 11, color: COLORS.textHint },
+  del: { padding: 8, marginLeft: 2 },
+  contactRow: { flexDirection: 'row-reverse', alignItems: 'center', marginTop: 4 },
+  phoneText: { fontSize: 13, color: COLORS.textSecondary, marginLeft: 8 },
+  iconBtn: { backgroundColor: '#f0f0f0', padding: 4, borderRadius: 8, marginLeft: 6 }
 });
 
 export default NuqootItem;
