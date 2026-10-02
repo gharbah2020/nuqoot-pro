@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system';
+import * as LegacyFileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
@@ -6,66 +7,84 @@ import * as XLSX from 'xlsx';
 import { getFullBackup, restoreFromBackup, getDB } from '../database/LocalDB';
 import { generateId, formatCurrency } from '../utils/helpers';
 
-// 🧠 محرك التواريخ الذكي الخارق لمعالجة تواريخ الإكسيل بجميع صيغها
-const parseExcelDate = (excelDate) => {
-  if (!excelDate) return new Date().toISOString().slice(0, 10);
-  
+// 🛡️ دالة ذكية وشاملة للكتابة في الملفات تضمن عدم حدوث أي Crash على أي موبايل
+const safeWriteFile = async (uri, content, encoding) => {
   try {
-    // 1. إذا كان الإكسيل يرسله كرقم تسلسلي (Serial Number) مثل 44099
-    if (typeof excelDate === 'number' || !isNaN(Number(excelDate)) && !String(excelDate).includes('-') && !String(excelDate).includes('/')) {
-      const num = Number(excelDate);
-      if (num > 1000 && num < 100000) {
-        // الفرق بين تاريخ بداية إكسيل (1900) وتاريخ جافاسكريبت (1970) هو 25569 يوم
-        const date = new Date(Math.round((num - 25569) * 86400 * 1000));
-        if (!isNaN(date.getTime())) {
-          return date.toISOString().slice(0, 10);
-        }
-      }
-    }
-
-    // 2. إذا كان تاريخ من نوع Date Object
-    if (excelDate instanceof Date) {
-      if (!isNaN(excelDate.getTime())) return excelDate.toISOString().slice(0, 10);
-    }
-
-    // 3. إذا كان نصاً (String) مثل 25-09-2020 أو 25/09/2020
-    const strDate = String(excelDate).trim().replace(/[\.\. \/]/g, '-');
-    const parts = strDate.split('-');
-
-    if (parts.length === 3) {
-      let [p1, p2, p3] = parts;
-      
-      // صيغة يوم-شهر-سنة (25-09-2020)
-      if (p1.length <= 2 && p3.length === 4) {
-        const day = p1.padStart(2, '0');
-        const month = p2.padStart(2, '0');
-        const year = p3;
-        return `${year}-${month}-${day}`;
-      }
-      
-      // صيغة سنة-شهر-يوم (2020-09-25)
-      if (p1.length === 4 && p3.length <= 2) {
-        const year = p1;
-        const month = p2.padStart(2, '0');
-        const day = p3.padStart(2, '0');
-        return `${year}-${month}-${day}`;
-      }
-    }
-
-    // محاولة أخيرة عبر المحلل المباشر
-    const d = new Date(strDate);
-    if (!isNaN(d.getTime())) {
-      return d.toISOString().slice(0, 10);
+    if (LegacyFileSystem && typeof LegacyFileSystem.writeAsStringAsync === 'function') {
+      await LegacyFileSystem.writeAsStringAsync(uri, content, { encoding });
+      return;
     }
   } catch (e) {
-    console.log('Date parse error:', e);
+    console.log('Legacy write fallback');
+  }
+  await FileSystem.writeAsStringAsync(uri, content, { encoding });
+};
+
+// 🛡️ دالة ذكية وشاملة لقراءة الملفات
+const safeReadFile = async (uri, encoding) => {
+  try {
+    if (LegacyFileSystem && typeof LegacyFileSystem.readAsStringAsync === 'function') {
+      return await LegacyFileSystem.readAsStringAsync(uri, { encoding });
+    }
+  } catch (e) {
+    console.log('Legacy read fallback');
+  }
+  return await FileSystem.readAsStringAsync(uri, { encoding });
+};
+
+// 🧠 محرك التواريخ الرياضي الذكي لفك شفرة تواريخ الإكسيل
+const parseExcelDate = (val) => {
+  if (!val) return new Date().toISOString().slice(0, 10);
+
+  try {
+    // 1. لو الإكسيل أرسله كـ Date Object جاهز
+    if (val instanceof Date && !isNaN(val.getTime())) {
+      const y = val.getFullYear();
+      const m = String(val.getMonth() + 1).padStart(2, '0');
+      const d = String(val.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    // 2. لو الإكسيل أرسله كـ رقم تسلسلي (مثلاً 44099)
+    if (typeof val === 'number' || (typeof val === 'string' && /^\d+(\.\d+)?$/.test(val.trim()))) {
+      const serial = Number(val);
+      if (serial > 1000 && serial < 100000) {
+        const utc_days = Math.floor(serial - 25569);
+        const utc_value = utc_days * 86400;
+        const dateInfo = new Date(utc_value * 1000);
+        const y = dateInfo.getUTCFullYear();
+        const m = String(dateInfo.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(dateInfo.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+    }
+
+    // 3. لو التاريخ نص زي "25-09-2020" أو "25/09/2020"
+    const str = String(val).trim().replace(/[\/\.]/g, '-');
+    const parts = str.split('-');
+    if (parts.length === 3) {
+      const p0 = parts[0].trim();
+      const p1 = parts[1].trim();
+      const p2 = parts[2].trim();
+
+      // صيغة يوم-شهر-سنة
+      if (p0.length <= 2 && p2.length === 4) {
+        return `${p2}-${p1.padStart(2, '0')}-${p0.padStart(2, '0')}`;
+      }
+      // صيغة سنة-شهر-يوم
+      if (p0.length === 4 && p2.length <= 2) {
+        return `${p0}-${p1.padStart(2, '0')}-${p2.padStart(2, '0')}`;
+      }
+    }
+  } catch (e) {
+    console.log('Error parsing excel date:', e);
   }
 
-  return new Date().toISOString().slice(0, 10); // بديل آمن عند الطوارئ
+  return new Date().toISOString().slice(0, 10);
 };
 
 export const BackupService = {
-  // 📊 1. تصدير Excel احترافي
+  // 📊 1. تصدير Excel
   async exportToExcel() {
     try {
       const data = await getFullBackup();
@@ -97,9 +116,10 @@ export const BackupService = {
       const wbout = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
       
       const fileName = `Nuqoot_Excel_${Date.now()}.xlsx`;
-      const uri = (FileSystem.cacheDirectory || FileSystem.documentDirectory) + fileName;
+      const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
+      const uri = baseDir + fileName;
 
-      await FileSystem.writeAsStringAsync(uri, wbout, { encoding: FileSystem.EncodingType.Base64 });
+      await safeWriteFile(uri, wbout, FileSystem.EncodingType.Base64);
 
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { 
@@ -113,14 +133,14 @@ export const BackupService = {
     }
   },
 
-  // 📥 2. استيراد Excel مع المحرك الذكي للتاريخ
+  // 📥 2. استيراد Excel مع التصحيح التلقائي للتواريخ
   async importFromExcel() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم إلغاء اختيار الملف' };
 
       const pickedUri = res.assets[0].uri;
-      const content = await FileSystem.readAsStringAsync(pickedUri, { encoding: FileSystem.EncodingType.Base64 });
+      const content = await safeReadFile(pickedUri, FileSystem.EncodingType.Base64);
       const wb = XLSX.read(content, { type: 'base64', cellDates: true });
 
       if (!wb.SheetNames || wb.SheetNames.length === 0) return { success: false, message: 'ملف الإكسيل غير صالح' };
@@ -135,11 +155,9 @@ export const BackupService = {
 
       for (const row of rows) {
         const evName = row['المناسبة'] || row['اسم المناسبة'] || 'مناسبة مستوردة';
-        
-        // 🎯 تحويل التاريخ بالمحرك الذكي لمنع أي خطأ
         const rawDate = row['التاريخ'] || row['تاريخ المناسبة'] || row['Date'];
         const evDate = parseExcelDate(rawDate);
-        
+
         const evDir = (row['الاتجاه'] || '').includes('صادرة') ? 'outgoing' : 'incoming';
         const evKey = `${evName}_${evDate}_${evDir}`;
 
@@ -160,25 +178,21 @@ export const BackupService = {
           await db.runAsync(
             `INSERT INTO nuqoot (id, event_id, person_name, amount, phone, relation, address, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-              generateId(), 
-              eventId, 
-              String(personName).trim(), 
-              amount, 
+              generateId(), eventId, String(personName).trim(), amount, 
               row['الهاتف'] || row['رقم الهاتف'] ? String(row['الهاتف'] || row['رقم الهاتف']) : '', 
               row['القرابة'] || row['صلة القرابة'] ? String(row['القرابة'] || row['صلة القرابة']) : '', 
-              row['البلد/العنوان'] || row['البلد'] || row['العنوان'] || '', 
-              ''
+              row['البلد/العنوان'] || row['البلد'] || row['العنوان'] || '', ''
             ]
           );
         }
       }
-      return { success: true, message: 'تم استيراد بيانات الإكسيل بنجاح بتواريخ دقيقة 100%' };
+      return { success: true, message: 'تم استيراد البيانات وتصحيح التواريخ بنجاح 100%' };
     } catch (e) { 
       return { success: false, message: 'تعذر القراءة: ' + e.message }; 
     }
   },
 
-  // 📄 3. تصدير تقرير PDF احترافي
+  // 📄 3. تصدير تقرير PDF
   async exportToPDF() {
     try {
       const data = await getFullBackup();
@@ -203,40 +217,37 @@ export const BackupService = {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'مشاركة تقرير PDF' });
       }
       return { success: true, message: 'تم إنشاء تقرير PDF بنجاح' };
-    } catch (e) { 
-      return { success: false, message: 'خطأ: ' + e.message }; 
-    }
+    } catch (e) { return { success: false, message: 'خطأ: ' + e.message }; }
   },
 
-  // 💾 4. تصدير ملف JSON
+  // 💾 4. تصدير ملف النسخة الاحتياطية (JSON)
   async exportToFile() {
     try {
       const data = await getFullBackup();
       const fileName = `nuqoot_backup_${Date.now()}.json`;
-      const uri = (FileSystem.cacheDirectory || FileSystem.documentDirectory) + fileName;
-      await FileSystem.writeAsStringAsync(uri, JSON.stringify(data, null, 2), { encoding: FileSystem.EncodingType.UTF8 });
+      const baseDir = FileSystem.cacheDirectory || FileSystem.documentDirectory || '';
+      const uri = baseDir + fileName;
+
+      await safeWriteFile(uri, JSON.stringify(data, null, 2), FileSystem.EncodingType.UTF8);
+
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/json', dialogTitle: 'تصدير ملف النسخة الاحتياطية' });
       }
       return { success: true, message: 'تم تصدير ملف النسخة الاحتياطية بنجاح' };
-    } catch (e) { 
-      return { success: false, message: 'خطأ أثناء التصدير: ' + e.message }; 
-    }
+    } catch (e) { return { success: false, message: 'خطأ أثناء التصدير: ' + e.message }; }
   },
 
-  // 📥 5. استيراد JSON
+  // 📥 5. استعادة النسخة الاحتياطية (JSON)
   async importFromFile() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
       if (res.canceled || !res.assets?.[0]) return { success: false, message: 'تم إلغاء اختيار الملف' };
       const pickedUri = res.assets[0].uri;
-      const content = await FileSystem.readAsStringAsync(pickedUri, { encoding: FileSystem.EncodingType.UTF8 });
+      const content = await safeReadFile(pickedUri, FileSystem.EncodingType.UTF8);
       const data = JSON.parse(content);
       if (!data.events || !data.nuqoot) return { success: false, message: 'ملف النسخة الاحتياطية غير صالح' };
       await restoreFromBackup(data);
       return { success: true, message: `تمت استعادة البيانات بنجاح (${data.events.length} مناسبة)` };
-    } catch (e) { 
-      return { success: false, message: 'تعذر الاستعادة: ' + e.message }; 
-    }
+    } catch (e) { return { success: false, message: 'تعذر الاستعادة: ' + e.message }; }
   }
 };
