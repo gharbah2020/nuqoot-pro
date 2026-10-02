@@ -33,7 +33,7 @@ jobs:
           CI: true
           EXPO_NO_TELEMETRY: 1
 
-      - name: 6. Configure Keystore Signature
+      - name: 6. Configure Release Keystore
         run: |
           cd android/app
           rm -f debug.keystore
