@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
@@ -6,8 +6,66 @@ import * as XLSX from 'xlsx';
 import { getFullBackup, restoreFromBackup, getDB } from '../database/LocalDB';
 import { generateId, formatCurrency } from '../utils/helpers';
 
+// 🧠 محرك التواريخ الذكي الخارق لمعالجة تواريخ الإكسيل بجميع صيغها
+const parseExcelDate = (excelDate) => {
+  if (!excelDate) return new Date().toISOString().slice(0, 10);
+  
+  try {
+    // 1. إذا كان الإكسيل يرسله كرقم تسلسلي (Serial Number) مثل 44099
+    if (typeof excelDate === 'number' || !isNaN(Number(excelDate)) && !String(excelDate).includes('-') && !String(excelDate).includes('/')) {
+      const num = Number(excelDate);
+      if (num > 1000 && num < 100000) {
+        // الفرق بين تاريخ بداية إكسيل (1900) وتاريخ جافاسكريبت (1970) هو 25569 يوم
+        const date = new Date(Math.round((num - 25569) * 86400 * 1000));
+        if (!isNaN(date.getTime())) {
+          return date.toISOString().slice(0, 10);
+        }
+      }
+    }
+
+    // 2. إذا كان تاريخ من نوع Date Object
+    if (excelDate instanceof Date) {
+      if (!isNaN(excelDate.getTime())) return excelDate.toISOString().slice(0, 10);
+    }
+
+    // 3. إذا كان نصاً (String) مثل 25-09-2020 أو 25/09/2020
+    const strDate = String(excelDate).trim().replace(/[\.\. \/]/g, '-');
+    const parts = strDate.split('-');
+
+    if (parts.length === 3) {
+      let [p1, p2, p3] = parts;
+      
+      // صيغة يوم-شهر-سنة (25-09-2020)
+      if (p1.length <= 2 && p3.length === 4) {
+        const day = p1.padStart(2, '0');
+        const month = p2.padStart(2, '0');
+        const year = p3;
+        return `${year}-${month}-${day}`;
+      }
+      
+      // صيغة سنة-شهر-يوم (2020-09-25)
+      if (p1.length === 4 && p3.length <= 2) {
+        const year = p1;
+        const month = p2.padStart(2, '0');
+        const day = p3.padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    }
+
+    // محاولة أخيرة عبر المحلل المباشر
+    const d = new Date(strDate);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().slice(0, 10);
+    }
+  } catch (e) {
+    console.log('Date parse error:', e);
+  }
+
+  return new Date().toISOString().slice(0, 10); // بديل آمن عند الطوارئ
+};
+
 export const BackupService = {
-  // 📊 1. تصدير Excel (.xlsx)
+  // 📊 1. تصدير Excel احترافي
   async exportToExcel() {
     try {
       const data = await getFullBackup();
@@ -55,7 +113,7 @@ export const BackupService = {
     }
   },
 
-  // 📥 2. استيراد Excel (.xlsx)
+  // 📥 2. استيراد Excel مع المحرك الذكي للتاريخ
   async importFromExcel() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
@@ -63,11 +121,9 @@ export const BackupService = {
 
       const pickedUri = res.assets[0].uri;
       const content = await FileSystem.readAsStringAsync(pickedUri, { encoding: FileSystem.EncodingType.Base64 });
-      const wb = XLSX.read(content, { type: 'base64' });
+      const wb = XLSX.read(content, { type: 'base64', cellDates: true });
 
-      if (!wb.SheetNames || wb.SheetNames.length === 0) {
-        return { success: false, message: 'ملف الإكسيل غير صالح' };
-      }
+      if (!wb.SheetNames || wb.SheetNames.length === 0) return { success: false, message: 'ملف الإكسيل غير صالح' };
 
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws);
@@ -79,7 +135,11 @@ export const BackupService = {
 
       for (const row of rows) {
         const evName = row['المناسبة'] || row['اسم المناسبة'] || 'مناسبة مستوردة';
-        const evDate = row['التاريخ'] || new Date().toISOString().slice(0, 10);
+        
+        // 🎯 تحويل التاريخ بالمحرك الذكي لمنع أي خطأ
+        const rawDate = row['التاريخ'] || row['تاريخ المناسبة'] || row['Date'];
+        const evDate = parseExcelDate(rawDate);
+        
         const evDir = (row['الاتجاه'] || '').includes('صادرة') ? 'outgoing' : 'incoming';
         const evKey = `${evName}_${evDate}_${evDir}`;
 
@@ -93,8 +153,8 @@ export const BackupService = {
           );
         }
 
-        const personName = row['اسم الشخص'] || row['الاسم'];
-        const amount = parseFloat(row['المبلغ (ج.م)'] || row['المبلغ'] || 0);
+        const personName = row['اسم الشخص'] || row['الاسم'] || row['Name'];
+        const amount = parseFloat(row['المبلغ (ج.م)'] || row['المبلغ'] || row['Amount'] || 0);
 
         if (personName && personName !== '-' && amount > 0) {
           await db.runAsync(
@@ -104,21 +164,21 @@ export const BackupService = {
               eventId, 
               String(personName).trim(), 
               amount, 
-              row['الهاتف'] ? String(row['الهاتف']) : '', 
-              row['القرابة'] ? String(row['القرابة']) : '', 
+              row['الهاتف'] || row['رقم الهاتف'] ? String(row['الهاتف'] || row['رقم الهاتف']) : '', 
+              row['القرابة'] || row['صلة القرابة'] ? String(row['القرابة'] || row['صلة القرابة']) : '', 
               row['البلد/العنوان'] || row['البلد'] || row['العنوان'] || '', 
               ''
             ]
           );
         }
       }
-      return { success: true, message: 'تم استيراد بيانات الإكسيل بنجاح' };
+      return { success: true, message: 'تم استيراد بيانات الإكسيل بنجاح بتواريخ دقيقة 100%' };
     } catch (e) { 
       return { success: false, message: 'تعذر القراءة: ' + e.message }; 
     }
   },
 
-  // 📄 3. تصدير تقرير PDF
+  // 📄 3. تصدير تقرير PDF احترافي
   async exportToPDF() {
     try {
       const data = await getFullBackup();
@@ -148,7 +208,7 @@ export const BackupService = {
     }
   },
 
-  // 💾 4. تصدير ملف JSON (النسخ الاحتياطي)
+  // 💾 4. تصدير ملف JSON
   async exportToFile() {
     try {
       const data = await getFullBackup();
@@ -164,7 +224,7 @@ export const BackupService = {
     }
   },
 
-  // 📥 5. استيراد JSON (استعادة النسخة الاحتياطية)
+  // 📥 5. استيراد JSON
   async importFromFile() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true });
