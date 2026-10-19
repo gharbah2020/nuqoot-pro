@@ -11,12 +11,15 @@ import {
   SafeAreaView,
   StatusBar,
   Linking,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LocalDB from '../database/LocalDB';
 import BackupService from '../services/BackupService';
+
+const STATUSBAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0;
 
 export default function EventDetailScreen({ route, navigation }) {
   const { eventId, eventName } = route.params;
@@ -165,7 +168,6 @@ export default function EventDetailScreen({ route, navigation }) {
     );
   };
 
-  // Direct Call Action
   const handleMakeCall = (phoneNumber) => {
     if (!phoneNumber) return;
     Linking.openURL(`tel:${phoneNumber}`).catch(() => {
@@ -173,7 +175,6 @@ export default function EventDetailScreen({ route, navigation }) {
     });
   };
 
-  // Smart WhatsApp Card Generator
   const handleSendWhatsApp = (item) => {
     if (!item.phone) {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف متاح لهذا الشخص');
@@ -182,16 +183,15 @@ export default function EventDetailScreen({ route, navigation }) {
 
     const cleanPhone = item.phone.replace(/[^0-9]/g, '');
     const formattedType = item.type === 'given' ? 'له (نقوط مقتطع)' : 'عليه (نقوط واصل)';
-    
+
     const message = `السلام عليكم ورحمة الله 🌹\nتحية طيبة عزيزي/عزيزتي *${item.person_name}*\n\nتم تسجيل النقوط الخاص بمناسبة: *${eventName}*\nالمبلغ: *${item.amount.toLocaleString('ar-EG')} ${currency}*\nالحالة: *${formattedType}*\nالتاريخ: ${item.date}\n\nدمتم دائماً في أفراح ومسرات 🎉`;
-    
+
     const url = `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
     Linking.openURL(url).catch(() => {
       Alert.alert('خطأ', 'تطبيق الواتساب غير مثبت أو لا يمكن فتحه');
     });
   };
 
-  // Generate PDF for this specific event
   const handleExportEventPdf = async () => {
     try {
       if (records.length === 0) {
@@ -234,7 +234,6 @@ export default function EventDetailScreen({ route, navigation }) {
 
       {item.notes ? <Text style={styles.recordNotes}>ملاحظات: {item.notes}</Text> : null}
 
-      {/* Action Shortcuts Footer */}
       <View style={styles.cardActionsFooter}>
         <View style={styles.quickShortcuts}>
           {item.phone ? (
@@ -265,7 +264,7 @@ export default function EventDetailScreen({ route, navigation }) {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#1B5E20" />
 
-      {/* App Bar */}
+      {/* App Bar with Safe Top Padding */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
@@ -278,12 +277,36 @@ export default function EventDetailScreen({ route, navigation }) {
 
       {/* Filters Bar */}
       <View style={styles.filtersBar}>
-        <ScrollViewHorizontalFilter
-          filterType={filterType}
-          setFilterType={setFilterType}
-          sortBy={sortBy}
-          setSortBy={setSortBy}
-        />
+        <View style={styles.filterRowContainer}>
+          <TouchableOpacity
+            style={[styles.chip, filterType === 'all' && styles.chipActive]}
+            onPress={() => setFilterType('all')}
+          >
+            <Text style={[styles.chipText, filterType === 'all' && styles.chipTextActive]}>الكل</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.chip, filterType === 'given' && styles.chipActiveGiven]}
+            onPress={() => setFilterType('given')}
+          >
+            <Text style={[styles.chipText, filterType === 'given' && styles.chipTextActive]}>له (مقتطع)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.chip, filterType === 'received' && styles.chipActiveReceived]}
+            onPress={() => setFilterType('received')}
+          >
+            <Text style={[styles.chipText, filterType === 'received' && styles.chipTextActive]}>عليه (واصل)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.chipSort}
+            onPress={() => setSortBy(sortBy === 'amount_desc' ? 'date_desc' : 'amount_desc')}
+          >
+            <Ionicons name="swap-vertical" size={16} color="#1B5E20" />
+            <Text style={styles.chipSortText}>{sortBy === 'amount_desc' ? 'الأعلى مبلغاً' : 'الأحدث'}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Records List */}
@@ -316,7 +339,6 @@ export default function EventDetailScreen({ route, navigation }) {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{editingRecord ? 'تعديل سجل النقوط' : 'إضافة نقوط جديد'}</Text>
 
-            {/* Type Switcher (Given / Received) */}
             <View style={styles.typeSwitchRow}>
               <TouchableOpacity
                 style={[styles.typeSwitchBtn, type === 'given' && styles.typeSwitchGivenActive]}
@@ -336,7 +358,6 @@ export default function EventDetailScreen({ route, navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* Person Name Input with Autocomplete */}
             <Text style={styles.inputLabel}>اسم الشخص *</Text>
             <TextInput
               style={styles.modalInput}
@@ -345,7 +366,6 @@ export default function EventDetailScreen({ route, navigation }) {
               onChangeText={handleNameChange}
             />
 
-            {/* Floating Suggestions List */}
             {suggestions.length > 0 && (
               <View style={styles.suggestionsContainer}>
                 {suggestions.map((item, idx) => (
@@ -381,7 +401,7 @@ export default function EventDetailScreen({ route, navigation }) {
                 <Text style={styles.inputLabel}>صلة القرابة</Text>
                 <TextInput
                   style={styles.modalInput}
-                  placeholder="صديق، جار، عم..."
+                  placeholder="صديق، جار..."
                   value={relationship}
                   onChangeText={setRelationship}
                 />
@@ -425,48 +445,13 @@ export default function EventDetailScreen({ route, navigation }) {
   );
 }
 
-// Subcomponent for filter bar
-function ScrollViewHorizontalFilter({ filterType, setFilterType, sortBy, setSortBy }) {
-  return (
-    <View style={styles.filterRowContainer}>
-      <TouchableOpacity
-        style={[styles.chip, filterType === 'all' && styles.chipActive]}
-        onPress={() => setFilterType('all')}
-      >
-        <Text style={[styles.chipText, filterType === 'all' && styles.chipTextActive]}>الكل</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.chip, filterType === 'given' && styles.chipActiveGiven]}
-        onPress={() => setFilterType('given')}
-      >
-        <Text style={[styles.chipText, filterType === 'given' && styles.chipTextActive]}>له (مقتطع)</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.chip, filterType === 'received' && styles.chipActiveReceived]}
-        onPress={() => setFilterType('received')}
-      >
-        <Text style={[styles.chipText, filterType === 'received' && styles.chipTextActive]}>عليه (واصل)</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.chipSort}
-        onPress={() => setSortBy(sortBy === 'amount_desc' ? 'date_desc' : 'amount_desc')}
-      >
-        <Ionicons name="swap-vertical" size={16} color="#1B5E20" />
-        <Text style={styles.chipSortText}>{sortBy === 'amount_desc' ? 'الأعلى مبلغاً' : 'الأحدث'}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F6F8' },
   header: {
     backgroundColor: '#1B5E20',
+    paddingTop: STATUSBAR_HEIGHT + 8,
+    paddingBottom: 14,
     paddingHorizontal: 16,
-    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
