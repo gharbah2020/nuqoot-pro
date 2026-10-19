@@ -1,107 +1,93 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { AuthService } from '../services/AuthService';
-import { COLORS } from '../utils/theme';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, Alert, SafeAreaView, StatusBar } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import LocalDB from '../database/LocalDB';
 
-const AuthScreen = ({ onAuth }) => {
+export default function AuthScreen({ navigation }) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
 
-  const submit = async () => {
+  const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
-      return Alert.alert('تنبيه', 'يرجى إدخال البريد الإلكتروني وكلمة المرور');
+      Alert.alert('خطأ', 'يرجى إدخال البريد الإلكتروني وكلمة المرور');
+      return;
     }
-    setLoading(true);
-    const r = isLogin 
-      ? await AuthService.login(email.trim(), password) 
-      : await AuthService.register(email.trim(), password);
-    setLoading(false);
 
-    if (r.success) {
-      onAuth(r.user);
-    } else {
-      Alert.alert('خطأ', r.message);
+    try {
+      if (isLogin) {
+        // Login Logic
+        const user = await LocalDB.loginUser(email.trim().toLowerCase(), password);
+        if (user) {
+          navigation.replace('Home');
+        } else {
+          Alert.alert('خطأ', 'البريد الإلكتروني أو كلمة المرور غير صحيحة');
+        }
+      } else {
+        // Register Logic
+        const result = await LocalDB.registerUser(email.trim().toLowerCase(), password);
+        if (result.success) {
+          Alert.alert('نجاح', 'تم إنشاء الحساب بنجاح!');
+          navigation.replace('Home');
+        } else {
+          Alert.alert('خطأ', result.message);
+        }
+      }
+    } catch (error) {
+      Alert.alert('خطأ', 'حدث خطأ في النظام');
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
-      <View style={styles.logo}>
-        <Text style={{ fontSize: 68 }}>📒</Text>
-        <Text style={styles.title}>دفتر النقوط</Text>
-        <Text style={styles.subtitle}>سجّل كل مناسباتك بدقة.. بدون نسيان</Text>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#1B5E20" />
+      <View style={styles.headerBox}>
+        <MaterialCommunityIcons name="shield-lock-outline" size={80} color="#FFF" />
+        <Text style={styles.appTitle}>دفتر النقوط Pro</Text>
       </View>
 
-      <View style={styles.form}>
+      <View style={styles.formContainer}>
         <Text style={styles.formTitle}>{isLogin ? 'تسجيل الدخول' : 'إنشاء حساب جديد'}</Text>
-        
-        <View style={styles.inputBox}>
-          <Ionicons name="mail-outline" size={20} color="#999" />
-          <TextInput 
-            style={styles.input} 
-            value={email} 
-            onChangeText={setEmail} 
-            placeholder="البريد الإلكتروني" 
-            keyboardType="email-address" 
-            autoCapitalize="none" 
-            textAlign="right" 
-          />
-        </View>
 
-        <View style={styles.inputBox}>
-          <Ionicons name="lock-closed-outline" size={20} color="#999" />
-          <TextInput 
-            style={styles.input} 
-            value={password} 
-            onChangeText={setPassword} 
-            placeholder="كلمة المرور (6 أحرف على الأقل)" 
-            secureTextEntry 
-            textAlign="right" 
-          />
-        </View>
+        <TextInput
+          style={styles.input}
+          placeholder="البريد الإلكتروني"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="كلمة المرور"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
 
-        <TouchableOpacity style={[styles.btn, loading && { opacity: 0.6 }]} onPress={submit} disabled={loading}>
-          <Text style={styles.btnText}>{loading ? 'جاري التحميل...' : isLogin ? 'دخول' : 'إنشاء الحساب'}</Text>
+        <TouchableOpacity style={styles.authBtn} onPress={handleAuth}>
+          <Text style={styles.authBtnText}>{isLogin ? 'دخول' : 'تسجيل'}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={() => setIsLogin(!isLogin)} style={styles.switch}>
-          <Text style={styles.switchText}>
-            {isLogin ? 'ليس لديك حساب؟ أنشئ حساب جديد مجاناً' : 'لديك حساب بالفعل؟ سجّل دخولك'}
+        <TouchableOpacity onPress={() => setIsLogin(!isLogin)} style={styles.switchBtn}>
+          <Text style={styles.switchBtnText}>
+            {isLogin ? 'ليس لديك حساب؟ أنشئ حساباً جديداً' : 'لديك حساب بالفعل؟ سجل دخولك'}
           </Text>
         </TouchableOpacity>
-
-        <View style={styles.note}>
-          <Text style={styles.noteText}>
-            🔒 مجاني ومدى الحياة بدون قيود{'\n'}
-            📱 يمكنك استرجاع بياناتك على أي هاتف في ثوانٍ
-          </Text>
-        </View>
       </View>
-    </ScrollView>
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  scroll: { flexGrow: 1, justifyContent: 'center', padding: 20, backgroundColor: COLORS.primary },
-  logo: { alignItems: 'center', marginBottom: 24 },
-  title: { fontSize: 30, fontWeight: 'bold', color: '#fff', marginTop: 8 },
-  subtitle: { fontSize: 13, color: '#ffffffcc', marginTop: 4 },
-  form: { backgroundColor: '#fff', borderRadius: 24, padding: 24, elevation: 8 },
-  formTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20, color: COLORS.text },
-  inputBox: { 
-    flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: '#f9f9f9', 
-    borderRadius: 12, marginBottom: 12, paddingHorizontal: 14, borderWidth: 1, borderColor: '#eee' 
-  },
-  input: { flex: 1, paddingVertical: 12, fontSize: 14, marginRight: 10 },
-  btn: { backgroundColor: COLORS.primary, borderRadius: 12, padding: 15, alignItems: 'center', marginTop: 10 },
-  btnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  switch: { alignItems: 'center', marginTop: 16 },
-  switchText: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
-  note: { backgroundColor: COLORS.incomingLight, borderRadius: 12, padding: 12, marginTop: 16 },
-  noteText: { fontSize: 12, color: COLORS.incoming, textAlign: 'center', lineHeight: 18 },
+  container: { flex: 1, backgroundColor: '#1B5E20' },
+  headerBox: { alignItems: 'center', marginTop: 60, marginBottom: 40 },
+  appTitle: { fontSize: 26, fontWeight: 'bold', color: '#FFF', marginTop: 10 },
+  formContainer: { flex: 1, backgroundColor: '#F4F6F8', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, elevation: 10 },
+  formTitle: { fontSize: 22, fontWeight: 'bold', color: '#1B5E20', textAlign: 'center', marginBottom: 30 },
+  input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#DDD', borderRadius: 10, padding: 15, fontSize: 16, marginBottom: 15, textAlign: 'right' },
+  authBtn: { backgroundColor: '#1B5E20', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 10, elevation: 2 },
+  authBtnText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  switchBtn: { marginTop: 20, alignItems: 'center' },
+  switchBtnText: { color: '#0288D1', fontSize: 15, fontWeight: 'bold' }
 });
-
-export default AuthScreen;
