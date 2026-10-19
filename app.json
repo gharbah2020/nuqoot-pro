@@ -22,7 +22,6 @@
       ]
     },
     "plugins": [
-      "expo-sqlite",
       "expo-local-authentication",
       "@react-native-community/datetimepicker"
     ]
