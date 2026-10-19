@@ -1,221 +1,309 @@
 import * as SQLite from 'expo-sqlite';
 
-let db = null;
-
-export const getDB = async () => {
-  if (db) return db;
-  db = await SQLite.openDatabaseAsync('nuqoot_pro.db');
-  
-  await db.execAsync(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-
-    CREATE TABLE IF NOT EXISTS events (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      date TEXT NOT NULL,
-      direction TEXT NOT NULL,
-      location TEXT DEFAULT '',
-      notes TEXT DEFAULT '',
-      is_deleted INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now','localtime'))
-    );
-
-    CREATE TABLE IF NOT EXISTS nuqoot (
-      id TEXT PRIMARY KEY,
-      event_id TEXT NOT NULL,
-      person_name TEXT NOT NULL,
-      amount REAL NOT NULL,
-      phone TEXT DEFAULT '',
-      relation TEXT DEFAULT '',
-      address TEXT DEFAULT '',
-      notes TEXT DEFAULT '',
-      is_deleted INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
-    CREATE INDEX IF NOT EXISTS idx_nuqoot_event ON nuqoot(event_id);
-    CREATE INDEX IF NOT EXISTS idx_nuqoot_person ON nuqoot(person_name);
-  `);
-
-  try { await db.execAsync("ALTER TABLE nuqoot ADD COLUMN address TEXT DEFAULT '';"); } catch (e) {}
-
-  return db;
-};
-
-// ===== EVENTS =====
-export const insertEvent = async (event) => {
-  const d = await getDB();
-  await d.runAsync(
-    `INSERT INTO events (id, name, type, date, direction, location, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [event.id, event.name, event.type, event.date, event.direction, event.location || '', event.notes || '']
-  );
-};
-
-export const getAllEvents = async () => {
-  const d = await getDB();
-  return await d.getAllAsync(`
-    SELECT e.*, 
-           COUNT(CASE WHEN n.is_deleted = 0 THEN 1 END) as nuqoot_count,
-           COALESCE(SUM(CASE WHEN n.is_deleted = 0 THEN n.amount ELSE 0 END), 0) as total_amount
-    FROM events e 
-    LEFT JOIN nuqoot n ON e.id = n.event_id
-    WHERE e.is_deleted = 0 
-    GROUP BY e.id 
-    ORDER BY e.date DESC, e.created_at DESC
-  `);
-};
-
-export const getEventById = async (id) => {
-  const d = await getDB();
-  return await d.getFirstAsync(`
-    SELECT e.*, 
-           COUNT(CASE WHEN n.is_deleted = 0 THEN 1 END) as nuqoot_count,
-           COALESCE(SUM(CASE WHEN n.is_deleted = 0 THEN n.amount ELSE 0 END), 0) as total_amount
-    FROM events e 
-    LEFT JOIN nuqoot n ON e.id = n.event_id
-    WHERE e.id = ? AND e.is_deleted = 0 
-    GROUP BY e.id
-  `, [id]);
-};
-
-export const updateEvent = async (id, name, type, date, location, notes) => {
-  const d = await getDB();
-  await d.runAsync(
-    `UPDATE events SET name=?, type=?, date=?, location=?, notes=? WHERE id=?`,
-    [name, type, date, location || '', notes || '', id]
-  );
-};
-
-export const softDeleteEvent = async (id) => {
-  const d = await getDB();
-  await d.runAsync(`UPDATE events SET is_deleted = 1 WHERE id = ?`, [id]);
-  await d.runAsync(`UPDATE nuqoot SET is_deleted = 1 WHERE event_id = ?`, [id]);
-};
-
-// ===== NUQOOT =====
-export const insertNuqoot = async (n) => {
-  const d = await getDB();
-  await d.runAsync(
-    `INSERT INTO nuqoot (id, event_id, person_name, amount, phone, relation, address, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [n.id, n.event_id, n.person_name, n.amount, n.phone || '', n.relation || '', n.address || '', n.notes || '']
-  );
-};
-
-export const getNuqootByEvent = async (eventId) => {
-  const d = await getDB();
-  return await d.getAllAsync(
-    `SELECT * FROM nuqoot WHERE event_id = ? AND is_deleted = 0 ORDER BY amount DESC, created_at DESC`,
-    [eventId]
-  );
-};
-
-export const updateNuqoot = async (id, person_name, amount, phone, relation, address, notes) => {
-  const d = await getDB();
-  await d.runAsync(
-    `UPDATE nuqoot SET person_name=?, amount=?, phone=?, relation=?, address=?, notes=? WHERE id=?`,
-    [person_name, amount, phone || '', relation || '', address || '', notes || '', id]
-  );
-};
-
-export const softDeleteNuqoot = async (id) => {
-  const d = await getDB();
-  await d.runAsync(`UPDATE nuqoot SET is_deleted = 1 WHERE id = ?`, [id]);
-};
-
-// ===== PEOPLE & SEARCH =====
-export const getAllPeople = async () => {
-  const d = await getDB();
-  return await d.getAllAsync(`
-    SELECT 
-      n.person_name, 
-      MAX(n.phone) as phone,
-      MAX(n.relation) as relation,
-      MAX(n.address) as address,
-      SUM(CASE WHEN e.direction = 'incoming' AND n.is_deleted = 0 AND e.is_deleted = 0 THEN n.amount ELSE 0 END) as total_received,
-      SUM(CASE WHEN e.direction = 'outgoing' AND n.is_deleted = 0 AND e.is_deleted = 0 THEN n.amount ELSE 0 END) as total_given,
-      COUNT(CASE WHEN n.is_deleted = 0 AND e.is_deleted = 0 THEN 1 END) as total_events
-    FROM nuqoot n 
-    JOIN events e ON n.event_id = e.id
-    WHERE n.is_deleted = 0 AND e.is_deleted = 0
-    GROUP BY n.person_name 
-    ORDER BY n.person_name
-  `);
-};
-
-export const searchPeople = async (query) => {
-  const d = await getDB();
-  return await d.getAllAsync(`
-    SELECT 
-      n.person_name, 
-      MAX(n.phone) as phone,
-      MAX(n.address) as address,
-      SUM(CASE WHEN e.direction = 'incoming' THEN n.amount ELSE 0 END) as total_received,
-      SUM(CASE WHEN e.direction = 'outgoing' THEN n.amount ELSE 0 END) as total_given,
-      COUNT(*) as total_events
-    FROM nuqoot n 
-    JOIN events e ON n.event_id = e.id
-    WHERE (n.person_name LIKE ? OR n.phone LIKE ?) AND n.is_deleted = 0 AND e.is_deleted = 0
-    GROUP BY n.person_name 
-    ORDER BY n.person_name
-  `, [`%${query}%`, `%${query}%`]);
-};
-
-export const getPersonHistory = async (name) => {
-  const d = await getDB();
-  return await d.getAllAsync(`
-    SELECT n.*, e.name as event_name, e.type as event_type, e.direction, e.date as event_date
-    FROM nuqoot n 
-    JOIN events e ON n.event_id = e.id
-    WHERE n.person_name = ? AND n.is_deleted = 0 AND e.is_deleted = 0
-    ORDER BY e.date DESC
-  `, [name]);
-};
-
-// ===== STATS & BACKUP =====
-export const getGeneralStats = async () => {
-  const d = await getDB();
-  const inc = await d.getFirstAsync(`SELECT COALESCE(SUM(n.amount), 0) as t FROM nuqoot n JOIN events e ON n.event_id = e.id WHERE e.direction = 'incoming' AND n.is_deleted = 0 AND e.is_deleted = 0`);
-  const out = await d.getFirstAsync(`SELECT COALESCE(SUM(n.amount), 0) as t FROM nuqoot n JOIN events e ON n.event_id = e.id WHERE e.direction = 'outgoing' AND n.is_deleted = 0 AND e.is_deleted = 0`);
-  const ev = await d.getFirstAsync(`SELECT COUNT(*) as c FROM events WHERE is_deleted = 0`);
-  const pp = await d.getFirstAsync(`SELECT COUNT(DISTINCT person_name) as c FROM nuqoot WHERE is_deleted = 0`);
-  return { totalIncoming: inc?.t || 0, totalOutgoing: out?.t || 0, balance: (inc?.t || 0) - (out?.t || 0), eventCount: ev?.c || 0, peopleCount: pp?.c || 0 };
-};
-
-export const getTopPeople = async (direction, limit = 10) => {
-  const d = await getDB();
-  return await d.getAllAsync(`
-    SELECT n.person_name, SUM(n.amount) as total_amount, COUNT(*) as times
-    FROM nuqoot n JOIN events e ON n.event_id = e.id
-    WHERE e.direction = ? AND n.is_deleted = 0 AND e.is_deleted = 0
-    GROUP BY n.person_name ORDER BY total_amount DESC LIMIT ?
-  `, [direction, limit]);
-};
-
-export const getFullBackup = async () => {
-  const d = await getDB();
-  const events = await d.getAllAsync('SELECT * FROM events WHERE is_deleted = 0');
-  const nuqoot = await d.getAllAsync('SELECT * FROM nuqoot WHERE is_deleted = 0');
-  return { events, nuqoot, exportDate: new Date().toISOString(), version: '2.0' };
-};
-
-export const restoreFromBackup = async (data) => {
-  const d = await getDB();
-  await d.runAsync('DELETE FROM nuqoot');
-  await d.runAsync('DELETE FROM events');
-  for (const e of data.events) {
-    await d.runAsync(
-      `INSERT OR REPLACE INTO events (id, name, type, date, direction, location, notes, is_deleted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-      [e.id, e.name, e.type, e.date, e.direction, e.location || '', e.notes || '', e.created_at || new Date().toISOString()]
-    );
+class LocalDB {
+  constructor() {
+    this.db = null;
   }
-  for (const n of data.nuqoot) {
-    await d.runAsync(
-      `INSERT OR REPLACE INTO nuqoot (id, event_id, person_name, amount, phone, relation, address, notes, is_deleted, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
-      [n.id, n.event_id, n.person_name, n.amount, n.phone || '', n.relation || '', n.address || '', n.notes || '', n.created_at || new Date().toISOString()]
-    );
+
+  async getDB() {
+    if (!this.db) {
+      this.db = await SQLite.openDatabaseAsync('nuqoot_pro.db');
+      await this.initTables();
+    }
+    return this.db;
   }
-};
+
+  async initTables() {
+    try {
+      const db = await this.getDB();
+      
+      // Events Table
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          date TEXT NOT NULL,
+          notes TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+      `);
+
+      // Records Table
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id INTEGER NOT NULL,
+          person_name TEXT NOT NULL,
+          amount REAL NOT NULL,
+          type TEXT NOT NULL CHECK(type IN ('given', 'received')),
+          date TEXT NOT NULL,
+          phone TEXT,
+          address TEXT,
+          relationship TEXT,
+          notes TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+        );
+      `);
+
+      // Settings Table (Currency, App Lock, etc.)
+      await db.execAsync(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+      `);
+
+      // Default Currency Setting
+      const currency = await this.getSetting('currency');
+      if (!currency) {
+        await this.saveSetting('currency', 'ج.م');
+      }
+
+    } catch (error) {
+      console.error('Error initializing tables:', error);
+    }
+  }
+
+  // Settings Helper
+  async getSetting(key, defaultValue = '') {
+    try {
+      const db = await this.getDB();
+      const result = await db.getFirstAsync('SELECT value FROM settings WHERE key = ?;', [key]);
+      return result ? result.value : defaultValue;
+    } catch (e) {
+      return defaultValue;
+    }
+  }
+
+  async saveSetting(key, value) {
+    try {
+      const db = await this.getDB();
+      await db.runAsync(
+        'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?);',
+        [key, value]
+      );
+    } catch (e) {
+      console.error('Error saving setting:', e);
+    }
+  }
+
+  // Dashboard Overview Stats
+  async getDashboardStats() {
+    try {
+      const db = await this.getDB();
+      const totalEvents = await db.getFirstAsync('SELECT COUNT(*) as count FROM events;');
+      const totalRecords = await db.getFirstAsync('SELECT COUNT(*) as count FROM records;');
+      const totals = await db.getFirstAsync(`
+        SELECT 
+          SUM(CASE WHEN type = 'given' THEN amount ELSE 0 END) as total_given,
+          SUM(CASE WHEN type = 'received' THEN amount ELSE 0 END) as total_received
+        FROM records;
+      `);
+
+      const given = totals?.total_given || 0;
+      const received = totals?.total_received || 0;
+      const balance = received - given;
+
+      return {
+        eventsCount: totalEvents?.count || 0,
+        recordsCount: totalRecords?.count || 0,
+        totalGiven: given,
+        totalReceived: received,
+        netBalance: balance
+      };
+    } catch (e) {
+      console.error('Error getting dashboard stats:', e);
+      return { eventsCount: 0, recordsCount: 0, totalGiven: 0, totalReceived: 0, netBalance: 0 };
+    }
+  }
+
+  // Events Operations
+  async getAllEvents() {
+    try {
+      const db = await this.getDB();
+      return await db.getAllAsync(`
+        SELECT e.*, 
+          COUNT(r.id) as records_count,
+          SUM(CASE WHEN r.type = 'given' THEN r.amount ELSE 0 END) as total_given,
+          SUM(CASE WHEN r.type = 'received' THEN r.amount ELSE 0 END) as total_received
+        FROM events e
+        LEFT JOIN records r ON e.id = r.event_id
+        GROUP BY e.id
+        ORDER BY e.date DESC, e.id DESC;
+      `);
+    } catch (error) {
+      console.error('Error getting events:', error);
+      return [];
+    }
+  }
+
+  async addEvent(event) {
+    try {
+      const db = await this.getDB();
+      const result = await db.runAsync(
+        'INSERT INTO events (name, date, notes) VALUES (?, ?, ?);',
+        [event.name.trim(), event.date, event.notes || '']
+      );
+      return result.lastInsertRowId;
+    } catch (error) {
+      console.error('Error adding event:', error);
+      throw error;
+    }
+  }
+
+  async updateEvent(id, event) {
+    try {
+      const db = await this.getDB();
+      await db.runAsync(
+        'UPDATE events SET name = ?, date = ?, notes = ? WHERE id = ?;',
+        [event.name.trim(), event.date, event.notes || '', id]
+      );
+    } catch (error) {
+      console.error('Error updating event:', error);
+      throw error;
+    }
+  }
+
+  async deleteEvent(id) {
+    try {
+      const db = await this.getDB();
+      await db.runAsync('DELETE FROM records WHERE event_id = ?;', [id]);
+      await db.runAsync('DELETE FROM events WHERE id = ?;', [id]);
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      throw error;
+    }
+  }
+
+  // Records Operations
+  async getAllRecords() {
+    try {
+      const db = await this.getDB();
+      return await db.getAllAsync(`
+        SELECT r.*, e.name as event_name
+        FROM records r
+        LEFT JOIN events e ON r.event_id = e.id
+        ORDER BY r.date DESC, r.id DESC;
+      `);
+    } catch (error) {
+      console.error('Error getting all records:', error);
+      return [];
+    }
+  }
+
+  async getRecordsByEvent(eventId, filterType = 'all', sortBy = 'date_desc') {
+    try {
+      const db = await this.getDB();
+      let query = `
+        SELECT r.*, e.name as event_name
+        FROM records r
+        LEFT JOIN events e ON r.event_id = e.id
+        WHERE r.event_id = ?
+      `;
+      const params = [eventId];
+
+      if (filterType === 'given') {
+        query += ` AND r.type = 'given'`;
+      } else if (filterType === 'received') {
+        query += ` AND r.type = 'received'`;
+      }
+
+      if (sortBy === 'amount_desc') {
+        query += ` ORDER BY r.amount DESC`;
+      } else if (sortBy === 'amount_asc') {
+        query += ` ORDER BY r.amount ASC`;
+      } else if (sortBy === 'name') {
+        query += ` ORDER BY r.person_name ASC`;
+      } else if (sortBy === 'date_asc') {
+        query += ` ORDER BY r.date ASC, r.id ASC`;
+      } else {
+        query += ` ORDER BY r.date DESC, r.id DESC`;
+      }
+
+      return await db.getAllAsync(query, params);
+    } catch (error) {
+      console.error('Error getting records by event:', error);
+      return [];
+    }
+  }
+
+  async addRecord(record) {
+    try {
+      const db = await this.getDB();
+      const result = await db.runAsync(
+        `INSERT INTO records 
+        (event_id, person_name, amount, type, date, phone, address, relationship, notes) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          record.event_id,
+          record.person_name.trim(),
+          record.amount,
+          record.type,
+          record.date,
+          record.phone || '',
+          record.address || '',
+          record.relationship || '',
+          record.notes || ''
+        ]
+      );
+      return result.lastInsertRowId;
+    } catch (error) {
+      console.error('Error adding record:', error);
+      throw error;
+    }
+  }
+
+  async updateRecord(id, record) {
+    try {
+      const db = await this.getDB();
+      await db.runAsync(
+        `UPDATE records 
+        SET person_name = ?, amount = ?, type = ?, date = ?, phone = ?, address = ?, relationship = ?, notes = ?
+        WHERE id = ?;`,
+        [
+          record.person_name.trim(),
+          record.amount,
+          record.type,
+          record.date,
+          record.phone || '',
+          record.address || '',
+          record.relationship || '',
+          record.notes || '',
+          id
+        ]
+      );
+    } catch (error) {
+      console.error('Error updating record:', error);
+      throw error;
+    }
+  }
+
+  async deleteRecord(id) {
+    try {
+      const db = await this.getDB();
+      await db.runAsync('DELETE FROM records WHERE id = ?;', [id]);
+    } catch (error) {
+      console.error('Error deleting record:', error);
+      throw error;
+    }
+  }
+
+  async searchPeople(query) {
+    try {
+      const db = await this.getDB();
+      const searchTerm = `%${query.trim()}%`;
+      return await db.getAllAsync(`
+        SELECT DISTINCT person_name, phone, address, relationship
+        FROM records
+        WHERE person_name LIKE ? OR phone LIKE ?
+        LIMIT 10;
+      `, [searchTerm, searchTerm]);
+    } catch (error) {
+      console.error('Error searching people:', error);
+      return [];
+    }
+  }
+}
+
+export default new LocalDB();
