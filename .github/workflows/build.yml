@@ -23,9 +23,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: 4. Install Dependencies
-        run: npm install --legacy-peer-deps
+        run: |
+          npm install --legacy-peer-deps
+          npm install -g expo-cli
 
       - name: 5. Generate Android Native Project
         run: npx expo prebuild --platform android --clean
