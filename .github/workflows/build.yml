@@ -27,23 +27,28 @@ jobs:
       - name: 4. Install Dependencies
         run: npm install --legacy-peer-deps
 
-      - name: 5. Auto Align Expo Dependencies
-        run: npx expo install --fix
-        env:
-          CI: true
-
-      - name: 6. Generate Android Native Project
+      - name: 5. Generate Android Native Project
         run: npx expo prebuild --platform android --clean
         env:
           CI: true
           EXPO_NO_TELEMETRY: 1
 
-      - name: 7. Configure Static Permanent Keystore
+      - name: 6. Configure Permanent Keystore Signature
         run: |
           cd android/app
+          rm -f debug.keystore
+          keytool -genkeypair -v \
+            -keystore debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 8. Build Android Release APK via Gradle
+      - name: 7. Build Android Release APK via Gradle
         run: |
           cd android
           chmod +x gradlew
@@ -54,7 +59,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 9. Upload Release APK Artifact
+      - name: 8. Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: NuqootPro-APK-Final
