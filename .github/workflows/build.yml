@@ -33,20 +33,10 @@ jobs:
           CI: true
           EXPO_NO_TELEMETRY: 1
 
-      - name: 6. Configure Persistent Fixed Keystore Signature
+      - name: 6. Configure Static Permanent Keystore
         run: |
           cd android/app
-          rm -f debug.keystore
-          keytool -genkeypair -v \
-            -keystore debug.keystore \
-            -alias androiddebugkey \
-            -storepass android \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG" \
-            -startdate "2024/01/01 00:00:00"
+          # الاعتماد على بصمة إكسبو الثابتة للأبد لضمان التحديث فوق النسخة القديمة
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
       - name: 7. Build Android Release APK via Gradle
