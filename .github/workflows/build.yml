@@ -25,12 +25,10 @@ jobs:
           node-version: '20'
 
       - name: 4. Install Dependencies
-        run: |
-          rm -rf node_modules package-lock.json
-          npm install --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
-      - name: 5. Check and Fix Expo Dependencies
-        run: npx expo install --check
+      - name: 5. Auto Align Expo Dependencies
+        run: npx expo install --fix
         env:
           CI: true
 
