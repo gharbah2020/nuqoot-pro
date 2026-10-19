@@ -11,11 +11,15 @@ import {
   SafeAreaView,
   StatusBar,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Platform,
+  Linking
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import LocalDB from '../database/LocalDB';
+
+const STATUSBAR_HEIGHT = Platform.OS === 'android' ? (StatusBar.currentHeight || 28) : 0;
 
 export default function HomeScreen({ navigation }) {
   const [events, setEvents] = useState([]);
@@ -36,6 +40,11 @@ export default function HomeScreen({ navigation }) {
   // Currency Selector Modal
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const availableCurrencies = ['ج.م', 'ر.س', 'د.إ', 'د.ك', 'ر.ع', 'ر.ق', '$', '€'];
+
+  // Global Search Modal
+  const [globalSearchModal, setGlobalSearchModal] = useState(false);
+  const [globalQuery, setGlobalQuery] = useState('');
+  const [globalResults, setGlobalResults] = useState([]);
 
   const loadData = useCallback(async () => {
     try {
@@ -133,6 +142,17 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
+  // Global Search Logic
+  const handleGlobalSearch = async (text) => {
+    setGlobalQuery(text);
+    if (text.trim().length > 0) {
+      const res = await LocalDB.searchPeople(text);
+      setGlobalResults(res);
+    } else {
+      setGlobalResults([]);
+    }
+  };
+
   const filteredEvents = events.filter(e =>
     e.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -200,20 +220,23 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1B5E20" />
-      
-      {/* App Bar Header */}
+      {/* App Bar Header with Clean Android Safe Top Padding */}
       <View style={styles.header}>
         <View style={styles.headerTitleContainer}>
-          <MaterialCommunityIcons name="notebook-outline" size={28} color="#FFF" />
+          <MaterialCommunityIcons name="notebook-outline" size={26} color="#FFF" />
           <Text style={styles.headerTitle}>دفتر النقوط Pro</Text>
         </View>
         <View style={styles.headerButtonsContainer}>
           <TouchableOpacity onPress={() => setCurrencyModalVisible(true)} style={styles.currencyBadgeBtn}>
             <Text style={styles.currencyBadgeText}>{currency}</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate('BackupScreen')} style={styles.iconHeaderBtn}>
-            <Ionicons name="settings-outline" size={22} color="#FFF" />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('BackupScreen')}
+            style={styles.iconHeaderBtn}
+            hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="settings-outline" size={24} color="#FFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -285,12 +308,30 @@ export default function HomeScreen({ navigation }) {
         <Ionicons name="add" size={32} color="#FFF" />
       </TouchableOpacity>
 
+      {/* Bottom Navigation Bar */}
+      <View style={styles.bottomTabBar}>
+        <TouchableOpacity style={styles.tabItem} onPress={() => loadData()}>
+          <Ionicons name="home" size={22} color="#1B5E20" />
+          <Text style={[styles.tabLabel, { color: '#1B5E20', fontWeight: 'bold' }]}>الرئيسية</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.tabItem} onPress={() => setGlobalSearchModal(true)}>
+          <Ionicons name="search" size={22} color="#666" />
+          <Text style={styles.tabLabel}>البحث الشامل</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.tabItem} onPress={() => navigation.navigate('BackupScreen')}>
+          <Ionicons name="stats-chart" size={22} color="#666" />
+          <Text style={styles.tabLabel}>التقارير</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Add / Edit Event Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{editingEvent ? 'تعديل المناسبة' : 'إضافة مناسبة جديدة'}</Text>
-            
+
             <Text style={styles.inputLabel}>اسم المناسبة *</Text>
             <TextInput
               style={styles.modalInput}
@@ -365,6 +406,48 @@ export default function HomeScreen({ navigation }) {
         </View>
       </Modal>
 
+      {/* Global Search Modal */}
+      <Modal visible={globalSearchModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <Text style={styles.modalTitle}>البحث الشامل في سجلات النقوط</Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="اكتب اسم الشخص أو رقم الهاتف..."
+              value={globalQuery}
+              onChangeText={handleGlobalSearch}
+              autoFocus
+            />
+
+            <FlatList
+              data={globalResults}
+              keyExtractor={(item, index) => index.toString()}
+              renderItem={({ item }) => (
+                <View style={styles.searchResultCard}>
+                  <Text style={styles.searchResultName}>{item.person_name}</Text>
+                  {item.phone ? (
+                    <TouchableOpacity onPress={() => Linking.openURL(`tel:${item.phone}`)}>
+                      <Text style={styles.searchResultPhone}>📱 {item.phone}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {item.relationship ? <Text style={styles.searchResultSub}>صلة القرابة: {item.relationship}</Text> : null}
+                  {item.address ? <Text style={styles.searchResultSub}>العنوان: {item.address}</Text> : null}
+                </View>
+              )}
+              ListEmptyComponent={
+                <Text style={{ textAlign: 'center', color: '#999', marginVertical: 20 }}>
+                  {globalQuery ? 'لا توجد نتائج مطابقة' : 'اكتب للبحث...'}
+                </Text>
+              }
+            />
+
+            <TouchableOpacity onPress={() => setGlobalSearchModal(false)} style={[styles.modalBtn, styles.cancelBtn, { marginTop: 10 }]}>
+              <Text style={styles.cancelBtnText}>إغلاق</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -373,8 +456,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F4F6F8' },
   header: {
     backgroundColor: '#1B5E20',
+    paddingTop: STATUSBAR_HEIGHT + 8,
+    paddingBottom: 14,
     paddingHorizontal: 16,
-    paddingVertical: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -382,15 +466,15 @@ const styles = StyleSheet.create({
   },
   headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
-  headerButtonsContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerButtonsContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   currencyBadgeBtn: {
     backgroundColor: '#388E3C',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 12
   },
   currencyBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
-  iconHeaderBtn: { padding: 4 },
+  iconHeaderBtn: { padding: 6 },
 
   dashboardContainer: {
     backgroundColor: '#FFF',
@@ -420,7 +504,7 @@ const styles = StyleSheet.create({
   searchIcon: { marginRight: 8 },
   searchInput: { flex: 1, height: 44, fontSize: 14, textAlign: 'right' },
 
-  listContainer: { paddingHorizontal: 12, paddingBottom: 80 },
+  listContainer: { paddingHorizontal: 12, paddingBottom: 110 },
   eventCard: {
     backgroundColor: '#FFF',
     borderRadius: 14,
@@ -453,14 +537,14 @@ const styles = StyleSheet.create({
   miniStatValue: { fontSize: 12, fontWeight: 'bold' },
   miniStatDivider: { width: 1, backgroundColor: '#E0E0E0' },
 
-  emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 60 },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', marginTop: 50 },
   emptyText: { fontSize: 16, fontWeight: 'bold', color: '#666', marginTop: 12 },
   emptySubtext: { fontSize: 13, color: '#999', marginTop: 4 },
 
   fab: {
     position: 'absolute',
     left: 20,
-    bottom: 25,
+    bottom: 75,
     backgroundColor: '#1B5E20',
     width: 58,
     height: 58,
@@ -469,6 +553,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     elevation: 6
   },
+
+  bottomTabBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    backgroundColor: '#FFF',
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    paddingBottom: Platform.OS === 'android' ? 6 : 0
+  },
+  tabItem: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  tabLabel: { fontSize: 11, color: '#666', marginTop: 2 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
   modalContent: { backgroundColor: '#FFF', borderRadius: 16, padding: 20 },
@@ -507,5 +606,10 @@ const styles = StyleSheet.create({
   currencyItem: { width: '22%', paddingVertical: 12, backgroundColor: '#F0F0F0', borderRadius: 8, alignItems: 'center' },
   currencyItemActive: { backgroundColor: '#1B5E20' },
   currencyItemText: { fontSize: 14, color: '#333', fontWeight: 'bold' },
-  currencyItemTextActive: { color: '#FFF' }
+  currencyItemTextActive: { color: '#FFF' },
+
+  searchResultCard: { backgroundColor: '#F9FBF9', borderBottomWidth: 1, borderColor: '#EEE', paddingVertical: 10, paddingHorizontal: 6 },
+  searchResultName: { fontSize: 15, fontWeight: 'bold', color: '#1B5E20' },
+  searchResultPhone: { fontSize: 13, color: '#0288D1', marginTop: 2 },
+  searchResultSub: { fontSize: 12, color: '#666', marginTop: 2 }
 });
