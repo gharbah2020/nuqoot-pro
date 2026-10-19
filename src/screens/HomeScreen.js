@@ -75,6 +75,22 @@ export default function HomeScreen({ navigation }) {
     loadData();
   };
 
+  // تسجيل الخروج
+  const handleLogout = () => {
+    Alert.alert(
+      'تسجيل الخروج',
+      'هل أنت متأكد أنك تريد تسجيل الخروج من التطبيق؟',
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        { 
+          text: 'خروج', 
+          style: 'destructive',
+          onPress: () => navigation.replace('Auth') 
+        }
+      ]
+    );
+  };
+
   const handleSaveCurrency = async (selected) => {
     await LocalDB.saveSetting('currency', selected);
     setCurrency(selected);
@@ -127,7 +143,7 @@ export default function HomeScreen({ navigation }) {
   const handleDeleteEvent = (event) => {
     Alert.alert(
       'تأكيد الحذف',
-      `هل أنت تأكد من حذف مناسبة "${event.name}"؟ سيتم حذف جميع سجلات النقوط المرتبطة بها نهائياً.`,
+      `هل أنت متأكد من حذف مناسبة "${event.name}"؟ سيتم حذف جميع سجلات النقوط المرتبطة بها نهائياً.`,
       [
         { text: 'إلغاء', style: 'cancel' },
         {
@@ -220,10 +236,12 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* App Bar Header with Clean Android Safe Top Padding */}
+      {/* App Bar Header */}
       <View style={styles.header}>
         <View style={styles.headerTitleContainer}>
-          <MaterialCommunityIcons name="notebook-outline" size={26} color="#FFF" />
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <MaterialCommunityIcons name="logout" size={22} color="#FFF" />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>دفتر النقوط Pro</Text>
         </View>
         <View style={styles.headerButtonsContainer}>
@@ -241,7 +259,7 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Financial Executive Dashboard */}
+      {/* Dashboard */}
       <View style={styles.dashboardContainer}>
         <Text style={styles.dashboardTitle}>الملخص المالي العام</Text>
         <View style={styles.dashboardCardsRow}>
@@ -283,7 +301,7 @@ export default function HomeScreen({ navigation }) {
         ) : null}
       </View>
 
-      {/* Content List */}
+      {/* List */}
       {loading ? (
         <ActivityIndicator size="large" color="#1B5E20" style={{ marginTop: 40 }} />
       ) : (
@@ -303,12 +321,12 @@ export default function HomeScreen({ navigation }) {
         />
       )}
 
-      {/* FAB Add Button */}
+      {/* FAB */}
       <TouchableOpacity style={styles.fab} activeOpacity={0.85} onPress={handleOpenAddModal}>
         <Ionicons name="add" size={32} color="#FFF" />
       </TouchableOpacity>
 
-      {/* Bottom Navigation Bar */}
+      {/* Bottom Navigation */}
       <View style={styles.bottomTabBar}>
         <TouchableOpacity style={styles.tabItem} onPress={() => loadData()}>
           <Ionicons name="home" size={22} color="#1B5E20" />
@@ -336,6 +354,7 @@ export default function HomeScreen({ navigation }) {
             <TextInput
               style={styles.modalInput}
               placeholder="مثال: زفاف محمد، عقيقة علي..."
+              placeholderTextColor="#999"
               value={eventName}
               onChangeText={setEventName}
             />
@@ -364,17 +383,19 @@ export default function HomeScreen({ navigation }) {
             <TextInput
               style={[styles.modalInput, { height: 70, textAlignVertical: 'top' }]}
               placeholder="أي ملاحظات إضافية..."
+              placeholderTextColor="#999"
               multiline
               value={eventNotes}
               onChangeText={setEventNotes}
             />
 
+            {/* أزرار الحفظ والإلغاء بألوان ثابتة لحل مشكلة الوضع الليلي */}
             <View style={styles.modalButtonsRow}>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={[styles.modalBtn, styles.cancelBtn]}>
-                <Text style={styles.cancelBtnText}>إلغاء</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtnSolid}>
+                <Text style={styles.btnTextWhite}>إلغاء</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveEvent} style={[styles.modalBtn, styles.saveBtn]}>
-                <Text style={styles.saveBtnText}>حفظ</Text>
+              <TouchableOpacity onPress={handleSaveEvent} style={styles.saveBtnSolid}>
+                <Text style={styles.btnTextWhite}>حفظ المناسبة</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -399,8 +420,10 @@ export default function HomeScreen({ navigation }) {
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity onPress={() => setCurrencyModalVisible(false)} style={[styles.modalBtn, styles.cancelBtn, { marginTop: 15 }]}>
-              <Text style={styles.cancelBtnText}>إغلاق</Text>
+            
+            {/* زر الإغلاق بلون ثابت */}
+            <TouchableOpacity onPress={() => setCurrencyModalVisible(false)} style={styles.closeBtnSolid}>
+              <Text style={styles.btnTextWhite}>إغلاق</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -414,6 +437,7 @@ export default function HomeScreen({ navigation }) {
             <TextInput
               style={styles.modalInput}
               placeholder="اكتب اسم الشخص أو رقم الهاتف..."
+              placeholderTextColor="#999"
               value={globalQuery}
               onChangeText={handleGlobalSearch}
               autoFocus
@@ -441,8 +465,9 @@ export default function HomeScreen({ navigation }) {
               }
             />
 
-            <TouchableOpacity onPress={() => setGlobalSearchModal(false)} style={[styles.modalBtn, styles.cancelBtn, { marginTop: 10 }]}>
-              <Text style={styles.cancelBtnText}>إغلاق</Text>
+            {/* زر الإغلاق بلون ثابت */}
+            <TouchableOpacity onPress={() => setGlobalSearchModal(false)} style={styles.closeBtnSolid}>
+              <Text style={styles.btnTextWhite}>إغلاق نافذة البحث</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -464,8 +489,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     elevation: 4
   },
-  headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
+  headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  logoutBtn: { padding: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 8 },
+  headerTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
   headerButtonsContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   currencyBadgeBtn: {
     backgroundColor: '#388E3C',
@@ -502,7 +528,7 @@ const styles = StyleSheet.create({
     borderColor: '#E0E0E0'
   },
   searchIcon: { marginRight: 8 },
-  searchInput: { flex: 1, height: 44, fontSize: 14, textAlign: 'right' },
+  searchInput: { flex: 1, height: 44, fontSize: 14, textAlign: 'right', color: '#333' },
 
   listContainer: { paddingHorizontal: 12, paddingBottom: 110 },
   eventCard: {
@@ -569,8 +595,8 @@ const styles = StyleSheet.create({
   tabItem: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   tabLabel: { fontSize: 11, color: '#666', marginTop: 2 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  modalContent: { backgroundColor: '#FFF', borderRadius: 16, padding: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#FFF', borderRadius: 16, padding: 20, elevation: 5 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1B5E20', textAlign: 'center', marginBottom: 16 },
   inputLabel: { fontSize: 13, fontWeight: 'bold', color: '#444', marginBottom: 4, textAlign: 'right' },
   modalInput: {
@@ -581,7 +607,8 @@ const styles = StyleSheet.create({
     padding: 10,
     fontSize: 14,
     textAlign: 'right',
-    marginBottom: 12
+    marginBottom: 12,
+    color: '#333'
   },
   datePickerBtn: {
     flexDirection: 'row',
@@ -595,12 +622,14 @@ const styles = StyleSheet.create({
     marginBottom: 12
   },
   datePickerBtnText: { fontSize: 14, color: '#333' },
-  modalButtonsRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
-  saveBtn: { backgroundColor: '#1B5E20' },
-  saveBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
-  cancelBtn: { backgroundColor: '#EEEEEE' },
-  cancelBtnText: { color: '#555', fontWeight: 'bold', fontSize: 14 },
+
+  /* --- Fixed Colors for Modal Buttons to prevent Dark Mode issues --- */
+  modalButtonsRow: { flexDirection: 'row', gap: 10, marginTop: 15 },
+  cancelBtnSolid: { flex: 1, backgroundColor: '#757575', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  saveBtnSolid: { flex: 1, backgroundColor: '#1B5E20', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  closeBtnSolid: { backgroundColor: '#D32F2F', paddingVertical: 12, borderRadius: 8, alignItems: 'center', marginTop: 15 },
+  btnTextWhite: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' },
+  /* ------------------------------------------------------------------ */
 
   currencyGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginVertical: 10 },
   currencyItem: { width: '22%', paddingVertical: 12, backgroundColor: '#F0F0F0', borderRadius: 8, alignItems: 'center' },
