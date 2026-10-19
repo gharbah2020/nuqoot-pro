@@ -12,7 +12,8 @@ import {
   StatusBar,
   Linking,
   ActivityIndicator,
-  Platform
+  Platform,
+  ScrollView
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -153,7 +154,7 @@ export default function EventDetailScreen({ route, navigation }) {
   const handleDeleteRecord = (rec) => {
     Alert.alert(
       'تأكيد الحذف',
-      `هل أنت تأكد من حذف سجل "${rec.person_name}"؟`,
+      `هل أنت متأكد من حذف سجل "${rec.person_name}"؟`,
       [
         { text: 'إلغاء', style: 'cancel' },
         {
@@ -250,10 +251,10 @@ export default function EventDetailScreen({ route, navigation }) {
 
         <View style={styles.editDeleteGroup}>
           <TouchableOpacity onPress={() => handleOpenEditModal(item)} style={styles.miniActionBtn}>
-            <Ionicons name="pencil" size={16} color="#555" />
+            <Ionicons name="pencil" size={18} color="#0288D1" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => handleDeleteRecord(item)} style={styles.miniActionBtn}>
-            <Ionicons name="trash-outline" size={16} color="#C62828" />
+            <Ionicons name="trash-outline" size={18} color="#C62828" />
           </TouchableOpacity>
         </View>
       </View>
@@ -266,12 +267,12 @@ export default function EventDetailScreen({ route, navigation }) {
 
       {/* App Bar with Safe Top Padding */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Ionicons name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{eventName}</Text>
-        <TouchableOpacity onPress={handleExportEventPdf} style={styles.pdfHeaderBtn}>
-          <Ionicons name="document-text-outline" size={22} color="#FFF" />
+        <TouchableOpacity onPress={handleExportEventPdf} style={styles.pdfHeaderBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Ionicons name="document-text-outline" size={24} color="#FFF" />
         </TouchableOpacity>
       </View>
 
@@ -337,106 +338,112 @@ export default function EventDetailScreen({ route, navigation }) {
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{editingRecord ? 'تعديل سجل النقوط' : 'إضافة نقوط جديد'}</Text>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalTitle}>{editingRecord ? 'تعديل سجل النقوط' : 'إضافة نقوط جديد'}</Text>
 
-            <View style={styles.typeSwitchRow}>
-              <TouchableOpacity
-                style={[styles.typeSwitchBtn, type === 'given' && styles.typeSwitchGivenActive]}
-                onPress={() => setType('given')}
-              >
-                <Text style={[styles.typeSwitchText, type === 'given' && styles.typeSwitchTextActive]}>
-                  له (نقوط مقتطع)
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.typeSwitchBtn, type === 'received' && styles.typeSwitchReceivedActive]}
-                onPress={() => setType('received')}
-              >
-                <Text style={[styles.typeSwitchText, type === 'received' && styles.typeSwitchTextActive]}>
-                  عليه (نقوط واصل)
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.inputLabel}>اسم الشخص *</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="اسم صاحب النقوط..."
-              value={personName}
-              onChangeText={handleNameChange}
-            />
-
-            {suggestions.length > 0 && (
-              <View style={styles.suggestionsContainer}>
-                {suggestions.map((item, idx) => (
-                  <TouchableOpacity key={idx} style={styles.suggestionItem} onPress={() => selectSuggestion(item)}>
-                    <Text style={styles.suggestionName}>{item.person_name}</Text>
-                    {item.phone ? <Text style={styles.suggestionPhone}>{item.phone}</Text> : null}
-                  </TouchableOpacity>
-                ))}
+              <View style={styles.typeSwitchRow}>
+                <TouchableOpacity
+                  style={[styles.typeSwitchBtn, type === 'given' && styles.typeSwitchGivenActive]}
+                  onPress={() => setType('given')}
+                >
+                  <Text style={[styles.typeSwitchText, type === 'given' && styles.typeSwitchTextActive]}>
+                    له (نقوط مقتطع)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.typeSwitchBtn, type === 'received' && styles.typeSwitchReceivedActive]}
+                  onPress={() => setType('received')}
+                >
+                  <Text style={[styles.typeSwitchText, type === 'received' && styles.typeSwitchTextActive]}>
+                    عليه (نقوط واصل)
+                  </Text>
+                </TouchableOpacity>
               </View>
-            )}
 
-            <Text style={styles.inputLabel}>المبلغ ({currency}) *</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="0.00"
-              keyboardType="numeric"
-              value={amount}
-              onChangeText={setAmount}
-            />
-
-            <View style={styles.twoInputsRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>رقم الهاتف</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="01xxxxxxxxx"
-                  keyboardType="phone-pad"
-                  value={phone}
-                  onChangeText={setPhone}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>صلة القرابة</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="صديق، جار..."
-                  value={relationship}
-                  onChangeText={setRelationship}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.inputLabel}>التاريخ</Text>
-            <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.datePickerBtn}>
-              <Ionicons name="calendar-outline" size={18} color="#1B5E20" />
-              <Text style={styles.datePickerBtnText}>{date}</Text>
-            </TouchableOpacity>
-
-            {showDatePicker && (
-              <DateTimePicker
-                value={new Date(date)}
-                mode="date"
-                display="default"
-                onChange={(evt, selectedDate) => {
-                  setShowDatePicker(false);
-                  if (selectedDate) {
-                    setDate(selectedDate.toISOString().split('T')[0]);
-                  }
-                }}
+              <Text style={styles.inputLabel}>اسم الشخص *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="اسم صاحب النقوط..."
+                placeholderTextColor="#999"
+                value={personName}
+                onChangeText={handleNameChange}
               />
-            )}
 
-            <View style={styles.modalButtonsRow}>
-              <TouchableOpacity onPress={() => setModalVisible(false)} style={[styles.modalBtn, styles.cancelBtn]}>
-                <Text style={styles.cancelBtnText}>إلغاء</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveRecord} style={[styles.modalBtn, styles.saveBtn]}>
-                <Text style={styles.saveBtnText}>حفظ السجل</Text>
-              </TouchableOpacity>
-            </View>
+              {suggestions.length > 0 && (
+                <View style={styles.suggestionsContainer}>
+                  {suggestions.map((item, idx) => (
+                    <TouchableOpacity key={idx} style={styles.suggestionItem} onPress={() => selectSuggestion(item)}>
+                      <Text style={styles.suggestionName}>{item.person_name}</Text>
+                      {item.phone ? <Text style={styles.suggestionPhone}>{item.phone}</Text> : null}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
+              <Text style={styles.inputLabel}>المبلغ ({currency}) *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="0.00"
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+                value={amount}
+                onChangeText={setAmount}
+              />
+
+              <View style={styles.twoInputsRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>رقم الهاتف</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="01xxxxxxxxx"
+                    placeholderTextColor="#999"
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={setPhone}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>صلة القرابة</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="صديق، جار..."
+                    placeholderTextColor="#999"
+                    value={relationship}
+                    onChangeText={setRelationship}
+                  />
+                </View>
+              </View>
+
+              <Text style={styles.inputLabel}>التاريخ</Text>
+              <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.datePickerBtn}>
+                <Ionicons name="calendar-outline" size={18} color="#1B5E20" />
+                <Text style={styles.datePickerBtnText}>{date}</Text>
+              </TouchableOpacity>
+
+              {showDatePicker && (
+                <DateTimePicker
+                  value={new Date(date)}
+                  mode="date"
+                  display="default"
+                  onChange={(evt, selectedDate) => {
+                    setShowDatePicker(false);
+                    if (selectedDate) {
+                      setDate(selectedDate.toISOString().split('T')[0]);
+                    }
+                  }}
+                />
+              )}
+
+              {/* أزرار الحفظ والإلغاء بألوان صريحة وثابتة لتجنب مشاكل اختفاء النص */}
+              <View style={styles.modalButtonsRow}>
+                <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtnSolid}>
+                  <Text style={styles.btnTextWhite}>إلغاء</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSaveRecord} style={styles.saveBtnSolid}>
+                  <Text style={styles.btnTextWhite}>حفظ السجل</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -512,8 +519,8 @@ const styles = StyleSheet.create({
     elevation: 6
   },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 16 },
-  modalContent: { backgroundColor: '#FFF', borderRadius: 16, padding: 18 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 16 },
+  modalContent: { backgroundColor: '#FFF', borderRadius: 16, padding: 18, maxHeight: '90%', elevation: 5 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1B5E20', textAlign: 'center', marginBottom: 14 },
 
   typeSwitchRow: { flexDirection: 'row', borderRadius: 8, backgroundColor: '#F0F0F0', padding: 4, marginBottom: 14 },
@@ -524,7 +531,7 @@ const styles = StyleSheet.create({
   typeSwitchTextActive: { color: '#FFF' },
 
   inputLabel: { fontSize: 12, fontWeight: 'bold', color: '#444', marginBottom: 4, textAlign: 'right' },
-  modalInput: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, fontSize: 14, textAlign: 'right', marginBottom: 10 },
+  modalInput: { backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, fontSize: 14, textAlign: 'right', marginBottom: 10, color: '#333' },
   twoInputsRow: { flexDirection: 'row', gap: 10 },
 
   suggestionsContainer: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#1B5E20', borderRadius: 8, marginTop: -8, marginBottom: 10, maxHeight: 120, elevation: 4 },
@@ -535,10 +542,10 @@ const styles = StyleSheet.create({
   datePickerBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, marginBottom: 12 },
   datePickerBtnText: { fontSize: 14, color: '#333' },
 
-  modalButtonsRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  modalBtn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
-  saveBtn: { backgroundColor: '#1B5E20' },
-  saveBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 14 },
-  cancelBtn: { backgroundColor: '#EEEEEE' },
-  cancelBtnText: { color: '#555', fontWeight: 'bold', fontSize: 14 }
+  /* --- Fixed Colors for Modal Buttons --- */
+  modalButtonsRow: { flexDirection: 'row', gap: 10, marginTop: 15 },
+  cancelBtnSolid: { flex: 1, backgroundColor: '#757575', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  saveBtnSolid: { flex: 1, backgroundColor: '#1B5E20', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  btnTextWhite: { color: '#FFFFFF', fontSize: 14, fontWeight: 'bold' }
+  /* -------------------------------------- */
 });
