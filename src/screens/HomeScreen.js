@@ -75,17 +75,20 @@ export default function HomeScreen({ navigation }) {
     loadData();
   };
 
-  // تسجيل الخروج
+  // --- دالة تسجيل الخروج المحسنة (مسح الجلسة) ---
   const handleLogout = () => {
     Alert.alert(
       'تسجيل الخروج',
-      'هل أنت متأكد أنك تريد تسجيل الخروج من التطبيق؟',
+      'هل أنت متأكد أنك تريد تسجيل الخروج؟ سيطلب منك التطبيق البصمة أو كلمة المرور عند الدخول مرة أخرى.',
       [
         { text: 'إلغاء', style: 'cancel' },
         { 
           text: 'خروج', 
           style: 'destructive',
-          onPress: () => navigation.replace('Auth') 
+          onPress: async () => {
+            await LocalDB.saveSetting('currentUser', ''); // مسح جلسة الدخول
+            navigation.replace('Auth');
+          }
         }
       ]
     );
@@ -158,7 +161,7 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
-  // Global Search Logic
+  // --- دالة البحث الشامل ---
   const handleGlobalSearch = async (text) => {
     setGlobalQuery(text);
     if (text.trim().length > 0) {
@@ -389,7 +392,6 @@ export default function HomeScreen({ navigation }) {
               onChangeText={setEventNotes}
             />
 
-            {/* أزرار الحفظ والإلغاء بألوان ثابتة لحل مشكلة الوضع الليلي */}
             <View style={styles.modalButtonsRow}>
               <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.cancelBtnSolid}>
                 <Text style={styles.btnTextWhite}>إلغاء</Text>
@@ -421,7 +423,6 @@ export default function HomeScreen({ navigation }) {
               ))}
             </View>
             
-            {/* زر الإغلاق بلون ثابت */}
             <TouchableOpacity onPress={() => setCurrencyModalVisible(false)} style={styles.closeBtnSolid}>
               <Text style={styles.btnTextWhite}>إغلاق</Text>
             </TouchableOpacity>
@@ -429,10 +430,10 @@ export default function HomeScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* Global Search Modal */}
+      {/* --- Global Search Modal (محدثة لتعرض المبالغ وتنقلك لكشف الحساب) --- */}
       <Modal visible={globalSearchModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+          <View style={[styles.modalContent, { maxHeight: '85%' }]}>
             <Text style={styles.modalTitle}>البحث الشامل في سجلات النقوط</Text>
             <TextInput
               style={styles.modalInput}
@@ -447,25 +448,41 @@ export default function HomeScreen({ navigation }) {
               data={globalResults}
               keyExtractor={(item, index) => index.toString()}
               renderItem={({ item }) => (
-                <View style={styles.searchResultCard}>
-                  <Text style={styles.searchResultName}>{item.person_name}</Text>
+                <TouchableOpacity 
+                  style={styles.searchResultCard}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setGlobalSearchModal(false);
+                    navigation.navigate('PersonDetailScreen', { personName: item.person_name });
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={styles.searchResultName}>{item.person_name}</Text>
+                    <Ionicons name="chevron-back" size={20} color="#1B5E20" />
+                  </View>
+                  
+                  {/* المربع الذي يعرض الملخص المالي في البحث */}
+                  <View style={styles.searchFinancialBox}>
+                    <Text style={styles.searchFinancialTextGiven}>له: {Number(item.total_given || 0).toLocaleString('ar-EG')} {currency}</Text>
+                    <Text style={styles.searchFinancialTextReceived}>عليه: {Number(item.total_received || 0).toLocaleString('ar-EG')} {currency}</Text>
+                  </View>
+
                   {item.phone ? (
-                    <TouchableOpacity onPress={() => Linking.openURL(`tel:${item.phone}`)}>
+                    <TouchableOpacity onPress={() => Linking.openURL(`tel:${item.phone}`)} style={{ marginTop: 6 }}>
                       <Text style={styles.searchResultPhone}>📱 {item.phone}</Text>
                     </TouchableOpacity>
                   ) : null}
-                  {item.relationship ? <Text style={styles.searchResultSub}>صلة القرابة: {item.relationship}</Text> : null}
-                  {item.address ? <Text style={styles.searchResultSub}>العنوان: {item.address}</Text> : null}
-                </View>
+                  
+                  {item.relationship ? <Text style={styles.searchResultSub}>القرابة: {item.relationship}</Text> : null}
+                </TouchableOpacity>
               )}
               ListEmptyComponent={
                 <Text style={{ textAlign: 'center', color: '#999', marginVertical: 20 }}>
-                  {globalQuery ? 'لا توجد نتائج مطابقة' : 'اكتب للبحث...'}
+                  {globalQuery ? 'لا توجد نتائج مطابقة' : 'اكتب اسم الشخص للبحث...'}
                 </Text>
               }
             />
 
-            {/* زر الإغلاق بلون ثابت */}
             <TouchableOpacity onPress={() => setGlobalSearchModal(false)} style={styles.closeBtnSolid}>
               <Text style={styles.btnTextWhite}>إغلاق نافذة البحث</Text>
             </TouchableOpacity>
@@ -637,8 +654,13 @@ const styles = StyleSheet.create({
   currencyItemText: { fontSize: 14, color: '#333', fontWeight: 'bold' },
   currencyItemTextActive: { color: '#FFF' },
 
-  searchResultCard: { backgroundColor: '#F9FBF9', borderBottomWidth: 1, borderColor: '#EEE', paddingVertical: 10, paddingHorizontal: 6 },
-  searchResultName: { fontSize: 15, fontWeight: 'bold', color: '#1B5E20' },
-  searchResultPhone: { fontSize: 13, color: '#0288D1', marginTop: 2 },
-  searchResultSub: { fontSize: 12, color: '#666', marginTop: 2 }
+  searchResultCard: { backgroundColor: '#F9FBF9', borderWidth: 1, borderColor: '#EEE', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 12, marginBottom: 10 },
+  searchResultName: { fontSize: 16, fontWeight: 'bold', color: '#1B5E20' },
+  
+  searchFinancialBox: { flexDirection: 'row', gap: 15, marginTop: 8, backgroundColor: '#E8F5E9', padding: 8, borderRadius: 6, justifyContent: 'center' },
+  searchFinancialTextGiven: { fontSize: 13, color: '#C62828', fontWeight: 'bold' },
+  searchFinancialTextReceived: { fontSize: 13, color: '#2E7D32', fontWeight: 'bold' },
+  
+  searchResultPhone: { fontSize: 13, color: '#0288D1', marginTop: 4 },
+  searchResultSub: { fontSize: 12, color: '#666', marginTop: 4 }
 });
