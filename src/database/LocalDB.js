@@ -17,7 +17,6 @@ class LocalDB {
     try {
       const db = await this.getDB();
       
-      // جدول المستخدمين (Auth)
       await db.execAsync(`
         CREATE TABLE IF NOT EXISTS users (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,11 +71,8 @@ class LocalDB {
   async registerUser(email, password) {
     try {
       const db = await this.getDB();
-      // فحص إذا كان الإيميل موجوداً مسبقاً
       const existingUser = await db.getFirstAsync('SELECT id FROM users WHERE email = ?;', [email]);
-      if (existingUser) {
-        return { success: false, message: 'هذا البريد الإلكتروني مسجل بالفعل!' };
-      }
+      if (existingUser) return { success: false, message: 'هذا البريد الإلكتروني مسجل بالفعل!' };
       await db.runAsync('INSERT INTO users (email, password) VALUES (?, ?);', [email, password]);
       return { success: true };
     } catch (e) {
@@ -87,14 +83,13 @@ class LocalDB {
   async loginUser(email, password) {
     try {
       const db = await this.getDB();
-      const user = await db.getFirstAsync('SELECT * FROM users WHERE email = ? AND password = ?;', [email, password]);
-      return user;
+      return await db.getFirstAsync('SELECT * FROM users WHERE email = ? AND password = ?;', [email, password]);
     } catch (e) {
       return null;
     }
   }
 
-  // --- Settings & Dashboard ---
+  // --- Settings ---
   async getSetting(key, defaultValue = '') {
     try {
       const db = await this.getDB();
@@ -177,13 +172,23 @@ class LocalDB {
     let query = `SELECT r.*, e.name as event_name FROM records r LEFT JOIN events e ON r.event_id = e.id WHERE r.event_id = ?`;
     if (filterType === 'given') query += ` AND r.type = 'given'`;
     else if (filterType === 'received') query += ` AND r.type = 'received'`;
-
     if (sortBy === 'amount_desc') query += ` ORDER BY r.amount DESC`;
     else if (sortBy === 'amount_asc') query += ` ORDER BY r.amount ASC`;
     else if (sortBy === 'name') query += ` ORDER BY r.person_name ASC`;
     else query += ` ORDER BY r.date DESC, r.id DESC`;
-
     return await db.getAllAsync(query, [eventId]);
+  }
+
+  // ** الدالة الجديدة: جلب كشف حساب تفصيلي لشخص معين **
+  async getRecordsByPerson(personName) {
+    const db = await this.getDB();
+    return await db.getAllAsync(`
+      SELECT r.*, e.name as event_name 
+      FROM records r 
+      LEFT JOIN events e ON r.event_id = e.id 
+      WHERE r.person_name = ? 
+      ORDER BY r.date DESC, r.id DESC;
+    `, [personName]);
   }
 
   async addRecord(record) {
@@ -208,18 +213,24 @@ class LocalDB {
     await db.runAsync('DELETE FROM records WHERE id = ?;', [id]);
   }
 
-  // --- Search (مع حل مشكلة التكرار) ---
+  // --- Advanced Search ---
   async searchPeople(query) {
     try {
       const db = await this.getDB();
       const searchTerm = `%${query.trim()}%`;
-      // GROUP BY person_name يمنع تكرار نفس الشخص في نتائج البحث
       return await db.getAllAsync(`
-        SELECT person_name, MAX(phone) as phone, MAX(address) as address, MAX(relationship) as relationship
+        SELECT 
+          person_name, 
+          MAX(phone) as phone, 
+          MAX(address) as address, 
+          MAX(relationship) as relationship,
+          SUM(CASE WHEN type = 'given' THEN amount ELSE 0 END) as total_given,
+          SUM(CASE WHEN type = 'received' THEN amount ELSE 0 END) as total_received
         FROM records
         WHERE person_name LIKE ? OR phone LIKE ?
         GROUP BY person_name
-        LIMIT 10;
+        ORDER BY person_name ASC
+        LIMIT 20;
       `, [searchTerm, searchTerm]);
     } catch (error) {
       return [];
