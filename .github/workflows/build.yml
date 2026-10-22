@@ -19,10 +19,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Set up Node.js 20
+      - name: 3. Set up Node.js 18 (Stable for Build)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
+          cache: 'npm'
 
       - name: 4. Install Dependencies
         run: npm install --legacy-peer-deps
@@ -33,7 +34,7 @@ jobs:
           CI: true
           EXPO_NO_TELEMETRY: 1
 
-      - name: 6. Configure Keystore Signature
+      - name: 6. Configure Keystore
         run: |
           cd android/app
           rm -f debug.keystore
@@ -48,29 +49,26 @@ jobs:
             -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 7. Manual JS Bundling (The Ultimate Fix)
+      - name: 7. Manual JS Bundle (The Fix)
         run: |
           mkdir -p android/app/src/main/assets
           npx react-native bundle \
             --platform android \
             --dev false \
-            --entry-file node_modules/expo/AppEntry.js \
+            --entry-file index.js \
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: 8. Build Android Release APK via Gradle
+      - name: 8. Final Gradle Build
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon -x bundleReleaseJsAndAssets -x createBundleReleaseJsAndAssets
         env:
           CI: true
-          EXPO_NO_TELEMETRY: 1
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 9. Upload Release APK Artifact
+      - name: 9. Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NuqootPro-APK-Final
