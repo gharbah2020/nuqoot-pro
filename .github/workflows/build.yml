@@ -5,7 +5,8 @@ on:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    # استخدام إصدار 22.04 لتجنب إجبار Node 24
+    runs-on: ubuntu-22.04
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
@@ -16,12 +17,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Set up Node.js 20 (Forced)
+      - name: 3. Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20.18.0' # إصدار محدد لمنع Node 24
+          node-version: '20'
+          cache: 'npm'
 
-      - name: 4. Clean & Fix Imports
+      - name: 4. Clean and Fix Imports
         run: |
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|expo-file-system/legacy|expo-file-system|g" {} +
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemLegacy|FileSystem|g" {} +
@@ -33,6 +35,7 @@ jobs:
       - name: 6. Prebuild Android
         run: |
           mkdir -p assets
+          # التأكد من وجود أيقونة لمنع فشل Gradle
           if [ ! -f assets/icon.png ]; then
             curl -o assets/icon.png https://raw.githubusercontent.com/expo/expo/main/templates/expo-template-blank/assets/icon.png
           fi
@@ -43,23 +46,23 @@ jobs:
       - name: 7. Configure Keystore
         run: |
           cd android/app
+          rm -f debug.keystore
           keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle
 
-      - name: 8. Create JS Bundle (With Detailed Error)
+      - name: 8. Create JS Bundle (Alternative Method)
         run: |
           mkdir -p android/app/src/main/assets
-          npx react-native bundle \
+          # استخدام expo export:embed بدلاً من react-native bundle لأنها أكثر استقراراً في SDK 51
+          npx expo export:embed \
             --platform android \
             --dev false \
-            --entry-file node_modules/expo/AppEntry.js \
-            --bundle-output android/app/src/main/assets/index.android.bundle \
-            --assets-dest android/app/src/main/res \
-            --reset-cache
+            --dest android/app/src/main/res \
+            --output android/app/src/main/assets/index.android.bundle
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: 9. Assemble APK
+      - name: 9. Build Release APK
         run: |
           cd android
           chmod +x gradlew
@@ -70,8 +73,8 @@ jobs:
           CI: true
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 10. Upload APK
+      - name: 10. Upload Final APK
         uses: actions/upload-artifact@v4
         with:
-          name: NuqootPro-Final
+          name: NuqootPro-V1.3.0
           path: android/app/build/outputs/apk/release/*.apk
