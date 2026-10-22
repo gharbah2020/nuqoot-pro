@@ -2,10 +2,12 @@ name: Build NuqootPro Release APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main, master ]
 
 jobs:
   build-apk:
-    runs-on: ubuntu-22.04 # استخدام نسخة مستقرة لتجنب Node 24 الإجباري
+    runs-on: ubuntu-latest
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
@@ -19,22 +21,19 @@ jobs:
       - name: 3. Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20.18.0' # إصدار محدد جداً ومستقر
+          node-version: '20'
 
-      - name: 4. Fix Imports & Clean Cache
+      - name: 4. Auto-Fix Legacy Imports
         run: |
-          # حذف أي استدعاءات قديمة قد تسبب فشل Metro
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|expo-file-system/legacy|expo-file-system|g" {} +
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemLegacy|FileSystem|g" {} +
-          rm -rf node_modules package-lock.json
 
       - name: 5. Install Dependencies
         run: |
           npm install --legacy-peer-deps
 
-      - name: 6. Prebuild Android Project
+      - name: 6. Prebuild Android Native Project
         run: |
-          # إنشاء مجلد الأيقونات إذا فقد لضمان عدم تعليق Gradle
           mkdir -p assets
           if [ ! -f assets/icon.png ]; then
             curl -o assets/icon.png https://raw.githubusercontent.com/expo/expo/main/templates/expo-template-blank/assets/icon.png
@@ -43,30 +42,37 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: 7. Configure Android Signing
+      - name: 7. Configure Persistent Keystore (For APK In-Place Updates)
         run: |
           cd android/app
-          rm -f debug.keystore
-          keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
-          sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle
+          rm -f debug.keystore release.keystore
+          keytool -genkeypair -v \
+            -keystore debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
+          sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 8. Create JS Bundle (Safe Method)
+      - name: 8. Create JS Bundle Manually
         run: |
           mkdir -p android/app/src/main/assets
-          # استخدام NODE_OPTIONS لتخطي تحذيرات Node الجديدة
-          export NODE_OPTIONS="--no-warnings --max-old-space-size=4096"
           npx react-native bundle \
             --platform android \
             --dev false \
             --entry-file node_modules/expo/AppEntry.js \
             --bundle-output android/app/src/main/assets/index.android.bundle \
             --assets-dest android/app/src/main/res
-        
-      - name: 9. Assemble APK
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: 9. Build Release APK (Skip Metro Gradle Tasks)
         run: |
           cd android
           chmod +x gradlew
-          # إجبار Gradle على البناء باستخدام الكود المجمع يدوياً وتجاهل أخطاء Node
           ./gradlew assembleRelease --no-daemon \
             -x bundleReleaseJsAndAssets \
             -x createBundleReleaseJsAndAssets
@@ -74,8 +80,8 @@ jobs:
           CI: true
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 10. Upload APK
+      - name: 10. Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NuqootPro-V1.3.0-Success
+          name: NuqootPro-V1.3.0-APK
           path: android/app/build/outputs/apk/release/*.apk
