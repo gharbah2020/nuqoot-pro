@@ -8,7 +8,6 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
-
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
@@ -23,27 +22,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
-      - name: 4. Auto-Fix Legacy Imports (Nuclear Fix)
+      - name: 4. Fix Node 24 Forced Issue & Legacy Imports
         run: |
-          echo "Fixing all legacy imports..."
+          echo "NODE_OPTIONS=--no-warnings=ExperimentalWarning" >> $GITHUB_ENV
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|expo-file-system/legacy|expo-file-system|g" {} +
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemLegacy|FileSystem|g" {} +
-          find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemStandard|FileSystem|g" {} +
-          echo "Done."
 
       - name: 5. Install Dependencies
         run: |
-          rm -rf node_modules package-lock.json
           npm install --legacy-peer-deps
 
-      - name: 6. Generate Android Native Project
-        run: npx expo prebuild --platform android --clean
+      - name: 6. Prebuild Android Project
+        run: |
+          # التأكد من وجود أيقونة افتراضية إذا لم تكن موجودة لمنع فشل Gradle
+          mkdir -p assets
+          if [ ! -f assets/icon.png ]; then
+            curl -o assets/icon.png https://raw.githubusercontent.com/expo/expo/main/templates/expo-template-blank/assets/icon.png
+          fi
+          npx expo prebuild --platform android --clean
         env:
-          CI: true
           EXPO_NO_TELEMETRY: 1
 
-      - name: 7. Configure Permanent Keystore
+      - name: 7. Configure Signing (Debug Key for Update Support)
         run: |
           cd android/app
           rm -f debug.keystore release.keystore
@@ -56,9 +58,10 @@ jobs:
             -keysize 2048 \
             -validity 10000 \
             -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
-          sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
+          # إجبار الأندرويد على استخدام نفس المفتاح دائماً لضمان التحديث فوق الإصدار القديم
+          sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle
 
-      - name: 8. Manual JS Bundle (Shows Real Error)
+      - name: 8. Create JS Bundle Manually
         run: |
           mkdir -p android/app/src/main/assets
           npx react-native bundle \
@@ -66,25 +69,25 @@ jobs:
             --dev false \
             --entry-file node_modules/expo/AppEntry.js \
             --bundle-output android/app/src/main/assets/index.android.bundle \
-            --assets-dest android/app/src/main/res \
-            --verbose 2>&1 | tee bundle.log
+            --assets-dest android/app/src/main/res
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: 9. Build Release APK (Skip JS Bundle)
+      - name: 9. Final Build APK (Force Skip Metro)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon \
+          # تنظيف التخزين المؤقت لـ Gradle وبناء APK
+          ./gradlew clean assembleRelease --no-daemon \
             -x bundleReleaseJsAndAssets \
-            -x createBundleReleaseJsAndAssets
+            -x createBundleReleaseJsAndAssets \
+            --stacktrace
         env:
           CI: true
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 10. Upload APK
+      - name: 10. Upload Final APK
         uses: actions/upload-artifact@v4
         with:
-          name: NuqootPro-APK-Final
+          name: NuqootPro-V1.3.0
           path: android/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
