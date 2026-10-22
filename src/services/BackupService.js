@@ -3,7 +3,12 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Print from 'expo-print';
 import * as XLSX from 'xlsx';
-import db from '../Database';   // تأكد من المسار الصحيح لقاعدة البيانات لديك
+
+// غيّر المسار حسب مكان ملف قاعدة البيانات عندك
+// جرب واحد من التاليين حسب هيكل مشروعك:
+import db from '../Database';
+// import db from '../../Database';
+// import db from '../database/Database';
 
 export const parseExcelDate = (val) => {
   if (!val) return new Date().toISOString().split('T')[0];
@@ -19,8 +24,8 @@ export const parseExcelDate = (val) => {
   return String(val).trim();
 };
 
-export const BackupService = {
-  exportToExcel: async (data, fileName = `nuqoot_export_${Date.now()}.xlsx`) => {
+const BackupService = {
+  exportToExcel: async (data, fileName = `nuqoot_${Date.now()}.xlsx`) => {
     try {
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
@@ -31,31 +36,25 @@ export const BackupService = {
         encoding: FileSystem.EncodingType.Base64,
       });
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          dialogTitle: 'تصدير إكسل',
-        });
+        await Sharing.shareAsync(uri);
       }
       return uri;
-    } catch (error) {
-      console.error('Excel Export Error:', error);
-      throw error;
+    } catch (e) {
+      console.error(e);
+      alert('فشل تصدير الإكسل');
     }
   },
 
-  exportToPDF: async (htmlContent, fileName = `nuqoot_report_${Date.now()}.pdf`) => {
+  exportToPDF: async (html) => {
     try {
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'مشاركة تقرير PDF',
-        });
+        await Sharing.shareAsync(uri);
       }
       return uri;
-    } catch (error) {
-      console.error('PDF Export Error:', error);
-      throw error;
+    } catch (e) {
+      console.error(e);
+      alert('فشل إنشاء PDF');
     }
   },
 
@@ -63,88 +62,53 @@ export const BackupService = {
     try {
       const events = await db.getAllAsync('SELECT * FROM events');
       const records = await db.getAllAsync('SELECT * FROM records');
-      const users = await db.getAllAsync('SELECT * FROM users').catch(() => []);
-      const settings = await db.getAllAsync('SELECT * FROM settings').catch(() => []);
-
-      const backupData = {
-        version: '1.3.0',
-        createdAt: new Date().toISOString(),
-        events,
-        records,
-        users,
-        settings,
-      };
-
+      const backup = JSON.stringify({ events, records, version: '1.3.0' }, null, 2);
       const uri = FileSystem.cacheDirectory + `nuqoot_backup_${Date.now()}.json`;
-      await FileSystem.writeAsStringAsync(uri, JSON.stringify(backupData, null, 2));
-      
+      await FileSystem.writeAsStringAsync(uri, backup);
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/json',
-          dialogTitle: 'نسخة احتياطية كاملة',
-        });
+        await Sharing.shareAsync(uri);
       }
-      return uri;
-    } catch (error) {
-      console.error('Full Backup Error:', error);
-      throw error;
+    } catch (e) {
+      console.error(e);
+      alert('فشل النسخ الاحتياطي');
     }
   },
 
   importFullBackup: async (onSuccess) => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
-        copyToCacheDirectory: true,
-      });
+      const res = await DocumentPicker.getDocumentAsync({ type: 'application/json' });
+      if (res.canceled || !res.assets?.[0]) return;
 
-      if (result.canceled || !result.assets || result.assets.length === 0) {
-        return false;
-      }
-
-      const content = await FileSystem.readAsStringAsync(result.assets[0].uri);
+      const content = await FileSystem.readAsStringAsync(res.assets[0].uri);
       const data = JSON.parse(content);
 
       await db.withTransactionAsync(async () => {
-        if (Array.isArray(data.events)) {
-          for (const event of data.events) {
+        if (data.events) {
+          for (const e of data.events) {
             await db.runAsync(
-              `INSERT OR REPLACE INTO events (id, name, date, location, createdAt) 
-               VALUES (?, ?, ?, ?, ?)`,
-              [event.id, event.name, event.date, event.location || '', event.createdAt || new Date().toISOString()]
+              'INSERT OR REPLACE INTO events (id, name, date, location) VALUES (?, ?, ?, ?)',
+              [e.id, e.name, e.date, e.location || '']
             );
           }
         }
-
-        if (Array.isArray(data.records)) {
-          for (const record of data.records) {
+        if (data.records) {
+          for (const r of data.records) {
             await db.runAsync(
-              `INSERT OR REPLACE INTO records 
-               (id, eventId, personName, amount, type, note, date) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              [
-                record.id,
-                record.eventId,
-                record.personName,
-                record.amount,
-                record.type,
-                record.note || '',
-                record.date,
-              ]
+              'INSERT OR REPLACE INTO records (id, eventId, personName, amount, type, note, date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+              [r.id, r.eventId, r.personName, r.amount, r.type, r.note || '', r.date]
             );
           }
         }
       });
 
-      if (typeof onSuccess === 'function') {
-        onSuccess();
-      }
-      return true;
-    } catch (error) {
-      console.error('Import Backup Error:', error);
-      throw error;
+      if (onSuccess) onSuccess();
+      alert('تمت الاستعادة بنجاح');
+    } catch (e) {
+      console.error(e);
+      alert('فشل استعادة النسخة');
     }
   },
 };
 
 export default BackupService;
+export { BackupService };
