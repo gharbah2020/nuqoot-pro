@@ -21,8 +21,6 @@
         "USE_FINGERPRINT"
       ]
     },
-    "plugins": [
-      "expo-local-authentication"
-    ]
+    "plugins": ["expo-local-authentication"]
   }
 }
