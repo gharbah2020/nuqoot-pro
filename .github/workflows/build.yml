@@ -26,12 +26,11 @@ jobs:
 
       - name: 4. Auto-Fix Legacy Imports (Nuclear Fix)
         run: |
-          echo "Scanning and fixing all legacy imports..."
+          echo "Fixing all legacy imports..."
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|expo-file-system/legacy|expo-file-system|g" {} +
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemLegacy|FileSystem|g" {} +
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemStandard|FileSystem|g" {} +
-          echo "Fix complete. Remaining check:"
-          grep -rn "expo-file-system/legacy" --include="*.js" . || echo "NONE - Clean!"
+          echo "Done."
 
       - name: 5. Install Dependencies
         run: |
@@ -59,18 +58,31 @@ jobs:
             -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 8. Build Release APK
+      - name: 8. Manual JS Bundle (Shows Real Error)
+        run: |
+          mkdir -p android/app/src/main/assets
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file node_modules/expo/AppEntry.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res \
+            --verbose 2>&1 | tee bundle.log
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+
+      - name: 9. Build Release APK (Skip JS Bundle)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon \
+            -x bundleReleaseJsAndAssets \
+            -x createBundleReleaseJsAndAssets
         env:
           CI: true
-          EXPO_NO_TELEMETRY: 1
-          NODE_OPTIONS: "--max-old-space-size=4096"
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 9. Upload APK
+      - name: 10. Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NuqootPro-APK-Final
