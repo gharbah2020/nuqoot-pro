@@ -5,8 +5,7 @@ on:
 
 jobs:
   build-apk:
-    # استخدام إصدار 22.04 لتجنب إجبار Node 24
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04 # استخدام نسخة مستقرة لتجنب Node 24 الإجباري
     steps:
       - name: 1. Checkout Repository
         uses: actions/checkout@v4
@@ -20,22 +19,23 @@ jobs:
       - name: 3. Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '20.18.0' # إصدار محدد جداً ومستقر
 
-      - name: 4. Clean and Fix Imports
+      - name: 4. Fix Imports & Clean Cache
         run: |
+          # حذف أي استدعاءات قديمة قد تسبب فشل Metro
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|expo-file-system/legacy|expo-file-system|g" {} +
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemLegacy|FileSystem|g" {} +
+          rm -rf node_modules package-lock.json
 
       - name: 5. Install Dependencies
         run: |
           npm install --legacy-peer-deps
 
-      - name: 6. Prebuild Android
+      - name: 6. Prebuild Android Project
         run: |
+          # إنشاء مجلد الأيقونات إذا فقد لضمان عدم تعليق Gradle
           mkdir -p assets
-          # التأكد من وجود أيقونة لمنع فشل Gradle
           if [ ! -f assets/icon.png ]; then
             curl -o assets/icon.png https://raw.githubusercontent.com/expo/expo/main/templates/expo-template-blank/assets/icon.png
           fi
@@ -43,29 +43,30 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: 7. Configure Keystore
+      - name: 7. Configure Android Signing
         run: |
           cd android/app
           rm -f debug.keystore
           keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle
 
-      - name: 8. Create JS Bundle (Alternative Method)
+      - name: 8. Create JS Bundle (Safe Method)
         run: |
           mkdir -p android/app/src/main/assets
-          # استخدام expo export:embed بدلاً من react-native bundle لأنها أكثر استقراراً في SDK 51
-          npx expo export:embed \
+          # استخدام NODE_OPTIONS لتخطي تحذيرات Node الجديدة
+          export NODE_OPTIONS="--no-warnings --max-old-space-size=4096"
+          npx react-native bundle \
             --platform android \
             --dev false \
-            --dest android/app/src/main/res \
-            --output android/app/src/main/assets/index.android.bundle
-        env:
-          NODE_OPTIONS: "--max-old-space-size=4096"
-
-      - name: 9. Build Release APK
+            --entry-file node_modules/expo/AppEntry.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res
+        
+      - name: 9. Assemble APK
         run: |
           cd android
           chmod +x gradlew
+          # إجبار Gradle على البناء باستخدام الكود المجمع يدوياً وتجاهل أخطاء Node
           ./gradlew assembleRelease --no-daemon \
             -x bundleReleaseJsAndAssets \
             -x createBundleReleaseJsAndAssets
@@ -73,8 +74,8 @@ jobs:
           CI: true
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 10. Upload Final APK
+      - name: 10. Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NuqootPro-V1.3.0
+          name: NuqootPro-V1.3.0-Success
           path: android/app/build/outputs/apk/release/*.apk
