@@ -23,7 +23,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: 4. Install Dependencies
         run: npm install --legacy-peer-deps
@@ -49,18 +48,28 @@ jobs:
             -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 7. Build Android Release APK via Gradle
+      - name: 7. Pre-bundle JS Asset Bundle
+        run: |
+          mkdir -p android/app/src/main/assets
+          npx react-native bundle \
+            --platform android \
+            --dev false \
+            --entry-file node_modules/expo/AppEntry.js \
+            --bundle-output android/app/src/main/assets/index.android.bundle \
+            --assets-dest android/app/src/main/res
+
+      - name: 8. Build Android Release APK via Gradle
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon -x createBundleReleaseJsAndAssets
         env:
           CI: true
           EXPO_NO_TELEMETRY: 1
           NODE_OPTIONS: "--max-old-space-size=4096"
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 8. Upload Release APK Artifact
+      - name: 9. Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: NuqootPro-APK-Final
