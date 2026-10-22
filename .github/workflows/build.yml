@@ -19,10 +19,10 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Set up Node.js 20
+      - name: 3. Set up Node.js 22 (Stable LTS)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: 4. Install Dependencies
         run: npm install --legacy-peer-deps
@@ -52,7 +52,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon
+          ./gradlew assembleRelease --no-daemon --stacktrace
         env:
           CI: true
           EXPO_NO_TELEMETRY: 1
