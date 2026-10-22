@@ -1,151 +1,157 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  Text,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { searchPeople, getPersonHistory } from '../database/LocalDB';
-import { formatCurrency, formatDateShort, getEventType } from '../utils/helpers';
-import { COLORS } from '../utils/theme';
+import db from '../Database';
 
-const SearchScreen = () => {
-  const [query, setQuery] = useState('');
+export default function SearchScreen({ navigation }) {
+  const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [history, setHistory] = useState([]);
 
   const handleSearch = async (text) => {
-    setQuery(text);
-    setSelected(null);
-    if (text.trim().length >= 1) {
-      setResults(await searchPeople(text.trim()));
-    } else {
+    setSearchQuery(text);
+    if (!text.trim()) {
       setResults([]);
+      return;
+    }
+
+    try {
+      const list = await db.getAllAsync(
+        `SELECT 
+           person_name,
+           SUM(CASE WHEN type = 'give' THEN amount ELSE 0 END) as total_given,
+           SUM(CASE WHEN type = 'receive' THEN amount ELSE 0 END) as total_received,
+           COUNT(*) as transaction_count
+         FROM records
+         WHERE LOWER(person_name) LIKE LOWER(?)
+         GROUP BY LOWER(person_name)
+         ORDER BY person_name ASC`,
+        [`%${text.trim()}%`]
+      );
+      setResults(list);
+    } catch (error) {
+      console.error('Search error:', error);
     }
   };
 
-  const handleSelect = async (person) => {
-    setSelected(person);
-    setHistory(await getPersonHistory(person.person_name));
-  };
+  const renderPersonItem = ({ item }) => (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() =>
+        navigation.navigate('PersonDetail', { personName: item.person_name })
+      }
+    >
+      <View style={styles.cardHeader}>
+        <Text style={styles.personName}>{item.person_name}</Text>
+        <Text style={styles.countText}>{item.transaction_count} حركة</Text>
+      </View>
+
+      <View style={styles.statsRow}>
+        <Text style={[styles.statText, { color: '#D32F2F' }]}>
+          له: {item.total_given.toLocaleString()} د.أ
+        </Text>
+        <Text style={[styles.statText, { color: '#2E7D32' }]}>
+          عليه: {item.total_received.toLocaleString()} د.أ
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>🔍 بحث عن شخص وسجلّه</Text>
-      </View>
-
       <View style={styles.searchBox}>
-        <Ionicons name="search" size={20} color="#888" />
+        <Ionicons name="search" size={20} color="#888" style={{ marginLeft: 8 }} />
         <TextInput
           style={styles.input}
-          value={query}
+          placeholder="ابحث باسم الشخص..."
+          placeholderTextColor="#888"
+          value={searchQuery}
           onChangeText={handleSearch}
-          placeholder="ابحث بالاسم أو رقم الهاتف..." // تم التحديث هنا
-          textAlign="right"
-          autoFocus
         />
       </View>
 
-      {selected ? (
-        <View style={{ flex: 1 }}>
-          <TouchableOpacity onPress={() => setSelected(null)} style={styles.backBtn}>
-            <Ionicons name="arrow-forward" size={18} color={COLORS.primary} />
-            <Text style={styles.backT}>الرجوع لنتائج البحث</Text>
-          </TouchableOpacity>
-
-          <View style={styles.personHeader}>
-            <Text style={styles.personName}>{selected.person_name}</Text>
-            {/* عرض البلد/العنوان لو موجود */}
-            {selected.address ? <Text style={styles.personPhone}>📍 {selected.address}</Text> : null}
-            {selected.phone ? <Text style={styles.personPhone}>📱 {selected.phone}</Text> : null}
-            
-            <View style={styles.statsRow}>
-              <View style={[styles.stat, { backgroundColor: COLORS.incomingLight }]}>
-                <Text style={styles.statL}>إجمالي الوارد (منه)</Text>
-                <Text style={[styles.statV, { color: COLORS.incoming }]}>{formatCurrency(selected.total_received)} ج.م</Text>
-              </View>
-              <View style={[styles.stat, { backgroundColor: COLORS.outgoingLight }]}>
-                <Text style={styles.statL}>إجمالي الصادر (له)</Text>
-                <Text style={[styles.statV, { color: COLORS.outgoing }]}>{formatCurrency(selected.total_given)} ج.م</Text>
-              </View>
-            </View>
-          </View>
-
-          <Text style={styles.secT}>تاريخ المناسبات المشتركة</Text>
-          <FlatList
-            data={history}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => {
-              const type = getEventType(item.event_type);
-              const isInc = item.direction === 'incoming';
-              return (
-                <View style={styles.histItem}>
-                  <Text style={[styles.histAmt, { color: isInc ? COLORS.incoming : COLORS.outgoing }]}>
-                    {isInc ? '+' : '-'}{formatCurrency(item.amount)} ج.م
-                  </Text>
-                  <View style={{ alignItems: 'flex-end', flex: 1, marginRight: 10 }}>
-                    <Text style={styles.histEv}>{type.icon} {item.event_name}</Text>
-                    <Text style={styles.histDate}>{formatDateShort(item.event_date)}</Text>
-                  </View>
-                </View>
-              );
-            }}
-          />
-        </View>
-      ) : (
-        <FlatList
-          data={results}
-          keyExtractor={item => item.person_name}
-          renderItem={({ item }) => (
-            <TouchableOpacity style={styles.resultItem} onPress={() => handleSelect(item)}>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={[styles.resBal, { color: (item.total_received - item.total_given) >= 0 ? COLORS.incoming : COLORS.outgoing }]}>
-                  {formatCurrency(item.total_received - item.total_given)} ج.م
-                </Text>
-                <Text style={{ fontSize: 10, color: '#888' }}>الصافي</Text>
-              </View>
-              <View style={{ flex: 1, marginRight: 12, alignItems: 'flex-end' }}>
-                <Text style={styles.resName}>{item.person_name}</Text>
-                <Text style={styles.resSub}>وارد: {formatCurrency(item.total_received)} | صادر: {formatCurrency(item.total_given)}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          ListEmptyComponent={
-            query.length > 0 ? (
-              <Text style={styles.empty}>لا توجد نتائج مطابقة لـ "{query}"</Text>
-            ) : (
-              <Text style={styles.empty}>ابحث باسم الشخص أو رقم هاتفه</Text>
-            )
-          }
-        />
-      )}
+      <FlatList
+        data={results}
+        keyExtractor={(item) => item.person_name}
+        renderItem={renderPersonItem}
+        contentContainerStyle={styles.listContainer}
+        ListEmptyComponent={
+          searchQuery.trim() ? (
+            <Text style={styles.emptyText}>لا توجد نتائج مطابقة</Text>
+          ) : (
+            <Text style={styles.emptyText}>اكتب اسماً في خانة البحث لعرض الحسابات</Text>
+          )
+        }
+      />
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  header: { backgroundColor: COLORS.primary, paddingVertical: 16, paddingTop: 45, alignItems: 'center' },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  searchBox: { flexDirection: 'row-reverse', alignItems: 'center', backgroundColor: '#fff', margin: 16, paddingHorizontal: 14, borderRadius: 12, elevation: 2 },
-  input: { flex: 1, paddingVertical: 12, fontSize: 14, marginRight: 8 },
-  resultItem: { flexDirection: 'row', backgroundColor: '#fff', marginHorizontal: 16, marginVertical: 4, padding: 14, borderRadius: 12, elevation: 1, alignItems: 'center' },
-  resName: { fontSize: 15, fontWeight: 'bold', color: COLORS.text },
-  resSub: { fontSize: 11, color: COLORS.textSecondary, marginTop: 2 },
-  resBal: { fontSize: 14, fontWeight: 'bold' },
-  backBtn: { flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8 },
-  backT: { color: COLORS.primary, fontSize: 13, fontWeight: 'bold', marginRight: 6 },
-  personHeader: { backgroundColor: '#fff', margin: 16, padding: 16, borderRadius: 16, alignItems: 'center', elevation: 2 },
-  personName: { fontSize: 18, fontWeight: 'bold', color: COLORS.text },
-  personPhone: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },
-  statsRow: { flexDirection: 'row-reverse', marginTop: 12, width: '100%' },
-  stat: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center', marginHorizontal: 4 },
-  statL: { fontSize: 11, color: COLORS.textSecondary },
-  statV: { fontSize: 14, fontWeight: 'bold', marginTop: 2 },
-  secT: { fontSize: 14, fontWeight: 'bold', textAlign: 'right', paddingHorizontal: 16, marginBottom: 6, color: COLORS.text },
-  histItem: { flexDirection: 'row', backgroundColor: '#fff', marginHorizontal: 16, marginVertical: 4, padding: 12, borderRadius: 10, elevation: 1, alignItems: 'center' },
-  histEv: { fontSize: 13, fontWeight: 'bold', color: COLORS.text },
-  histDate: { fontSize: 11, color: COLORS.textHint, marginTop: 2 },
-  histAmt: { fontSize: 14, fontWeight: 'bold' },
-  empty: { textAlign: 'center', color: '#888', marginTop: 40, paddingHorizontal: 20 },
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    padding: 16,
+  },
+  searchBox: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    elevation: 2,
+    marginBottom: 16,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'right',
+  },
+  listContainer: {
+    paddingBottom: 16,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  personName: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#1B5E20',
+  },
+  countText: {
+    fontSize: 12,
+    color: '#777',
+  },
+  statsRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  statText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#888',
+    marginTop: 40,
+    fontSize: 15,
+  },
 });
-
-export default SearchScreen;
