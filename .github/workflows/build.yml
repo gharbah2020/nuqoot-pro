@@ -24,18 +24,27 @@ jobs:
         with:
           node-version: '20'
 
-      - name: 4. Clean Install Dependencies
+      - name: 4. Auto-Fix Legacy Imports (Nuclear Fix)
+        run: |
+          echo "Scanning and fixing all legacy imports..."
+          find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|expo-file-system/legacy|expo-file-system|g" {} +
+          find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemLegacy|FileSystem|g" {} +
+          find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemStandard|FileSystem|g" {} +
+          echo "Fix complete. Remaining check:"
+          grep -rn "expo-file-system/legacy" --include="*.js" . || echo "NONE - Clean!"
+
+      - name: 5. Install Dependencies
         run: |
           rm -rf node_modules package-lock.json
           npm install --legacy-peer-deps
 
-      - name: 5. Generate Android Native Project
+      - name: 6. Generate Android Native Project
         run: npx expo prebuild --platform android --clean
         env:
           CI: true
           EXPO_NO_TELEMETRY: 1
 
-      - name: 6. Configure Permanent Keystore Signature
+      - name: 7. Configure Permanent Keystore
         run: |
           cd android/app
           rm -f debug.keystore release.keystore
@@ -50,7 +59,7 @@ jobs:
             -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 7. Build Android Release APK via Gradle
+      - name: 8. Build Release APK
         run: |
           cd android
           chmod +x gradlew
@@ -61,8 +70,9 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 8. Upload Release APK Artifact
+      - name: 9. Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NuqootPro-APK-Final
           path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
