@@ -2,8 +2,6 @@ name: Build NuqootPro Release APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master ]
 
 jobs:
   build-apk:
@@ -18,15 +16,13 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: 3. Set up Node.js 20
+      - name: 3. Set up Node.js 20 (Forced)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '20.18.0' # إصدار محدد لمنع Node 24
 
-      - name: 4. Fix Node 24 Forced Issue & Legacy Imports
+      - name: 4. Clean & Fix Imports
         run: |
-          echo "NODE_OPTIONS=--no-warnings=ExperimentalWarning" >> $GITHUB_ENV
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|expo-file-system/legacy|expo-file-system|g" {} +
           find . -name "*.js" -not -path "./node_modules/*" -exec sed -i "s|FileSystemLegacy|FileSystem|g" {} +
 
@@ -34,9 +30,8 @@ jobs:
         run: |
           npm install --legacy-peer-deps
 
-      - name: 6. Prebuild Android Project
+      - name: 6. Prebuild Android
         run: |
-          # التأكد من وجود أيقونة افتراضية إذا لم تكن موجودة لمنع فشل Gradle
           mkdir -p assets
           if [ ! -f assets/icon.png ]; then
             curl -o assets/icon.png https://raw.githubusercontent.com/expo/expo/main/templates/expo-template-blank/assets/icon.png
@@ -45,23 +40,13 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: 7. Configure Signing (Debug Key for Update Support)
+      - name: 7. Configure Keystore
         run: |
           cd android/app
-          rm -f debug.keystore release.keystore
-          keytool -genkeypair -v \
-            -keystore debug.keystore \
-            -alias androiddebugkey \
-            -storepass android \
-            -keypass android \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
-            -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
-          # إجبار الأندرويد على استخدام نفس المفتاح دائماً لضمان التحديث فوق الإصدار القديم
+          keytool -genkeypair -v -keystore debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle
 
-      - name: 8. Create JS Bundle Manually
+      - name: 8. Create JS Bundle (With Detailed Error)
         run: |
           mkdir -p android/app/src/main/assets
           npx react-native bundle \
@@ -69,25 +54,24 @@ jobs:
             --dev false \
             --entry-file node_modules/expo/AppEntry.js \
             --bundle-output android/app/src/main/assets/index.android.bundle \
-            --assets-dest android/app/src/main/res
+            --assets-dest android/app/src/main/res \
+            --reset-cache
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-      - name: 9. Final Build APK (Force Skip Metro)
+      - name: 9. Assemble APK
         run: |
           cd android
           chmod +x gradlew
-          # تنظيف التخزين المؤقت لـ Gradle وبناء APK
-          ./gradlew clean assembleRelease --no-daemon \
+          ./gradlew assembleRelease --no-daemon \
             -x bundleReleaseJsAndAssets \
-            -x createBundleReleaseJsAndAssets \
-            --stacktrace
+            -x createBundleReleaseJsAndAssets
         env:
           CI: true
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 10. Upload Final APK
+      - name: 10. Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NuqootPro-V1.3.0
+          name: NuqootPro-Final
           path: android/app/build/outputs/apk/release/*.apk
