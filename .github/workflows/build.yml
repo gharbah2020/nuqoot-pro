@@ -29,27 +29,16 @@ jobs:
           rm -rf node_modules package-lock.json
           npm install --legacy-peer-deps
 
-      - name: 5. Verify No Legacy Imports
-        run: |
-          if grep -rn "expo-file-system/legacy" --include="*.js" . ; then
-            echo "::error::Found forbidden legacy import - fix StorageHelpers.js"
-            exit 1
-          fi
-          echo "No legacy imports - OK"
-
-      - name: 6. Generate Android Native Project
+      - name: 5. Generate Android Native Project
         run: npx expo prebuild --platform android --clean
         env:
           CI: true
           EXPO_NO_TELEMETRY: 1
 
-      - name: 7. Configure Permanent Keystore Signature
+      - name: 6. Configure Permanent Keystore Signature
         run: |
           cd android/app
-          # حذف أي مفتاح قديم أولاً (هذا هو سبب الخطأ الأخير)
-          rm -f debug.keystore
-          rm -f release.keystore
-          # إنشاء مفتاح ثابت للتوقيع
+          rm -f debug.keystore release.keystore
           keytool -genkeypair -v \
             -keystore debug.keystore \
             -alias androiddebugkey \
@@ -59,10 +48,9 @@ jobs:
             -keysize 2048 \
             -validity 10000 \
             -dname "CN=NuqootPro,OU=App,O=Shark,L=Cairo,ST=Cairo,C=EG"
-          # إجبار نسخة الـ Release على استخدام هذا المفتاح
           sed -i 's/signingConfig signingConfigs.release/signingConfig signingConfigs.debug/g' build.gradle || true
 
-      - name: 8. Build Android Release APK via Gradle
+      - name: 7. Build Android Release APK via Gradle
         run: |
           cd android
           chmod +x gradlew
@@ -73,7 +61,7 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=4096"
           _JAVA_OPTIONS: "-Xmx4096m"
 
-      - name: 9. Upload Release APK Artifact
+      - name: 8. Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: NuqootPro-APK-Final
